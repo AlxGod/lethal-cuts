@@ -38,8 +38,18 @@ class Project:
     def add_clip(self, clip: Clip) -> int:
         """Adds a clip, keeps the list in time order, and returns its index."""
         self.clips.append(clip)
+        self.sort()
+        return self.index_of(clip)
+
+    def sort(self) -> None:
         self.clips.sort(key=lambda c: c.start)
-        return self.clips.index(clip)
+
+    def index_of(self, clip: Clip) -> int:
+        """Finds this exact clip (not just one with the same times)."""
+        return next((i for i, c in enumerate(self.clips) if c is clip), -1)
+
+    def overlapping(self, start: float, end: float, ignore: Clip | None = None) -> list[int]:
+        return [i for i, c in enumerate(self.clips) if c is not ignore and c.start < end and start < c.end]
 
     def save(self) -> None:
         data = {

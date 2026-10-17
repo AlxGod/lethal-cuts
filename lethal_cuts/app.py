@@ -18,6 +18,12 @@ QPushButton#markIn { background: #1f5a44; border-color: #2e7a5e; }
 QPushButton#markIn:hover { background: #267052; }
 QPushButton#markOut { background: #6e1f33; border-color: #8e2b45; }
 QPushButton#markOut:hover { background: #85263e; }
+QPushButton#speedButton { padding: 6px 9px; }
+QPushButton#speedButton:checked { background: #7b4fc9; border-color: #9a70e0; }
+QLabel#dimLabel { color: #8a80a0; padding-right: 4px; }
+QGroupBox { border: 1px solid #2a2338; border-radius: 6px; margin-top: 10px; padding-top: 8px; }
+QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #b8aed0; }
+QGroupBox:disabled { color: #6a6080; }
 QLabel#timeLabel { font-family: Consolas; font-size: 11pt; padding: 0 8px; }
 QLabel#panelTitle { font-size: 12pt; font-weight: bold; padding: 2px 0 6px 2px; }
 QTableWidget { background: #1a1524; alternate-background-color: #1f192b; gridline-color: #2a2338; border: 1px solid #2a2338; }
