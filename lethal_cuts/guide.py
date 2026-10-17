@@ -21,6 +21,10 @@ td { padding: 3px 18px 3px 0; }
 
 RECORDING = """
 <a name="recording"></a><h2>Recording tips</h2>
+<p><b>Playing on the computer (Tabletop Simulator)?</b> Use the <i>Record</i> tab: start the game, click <i>Start recording</i>,
+and click <i>Stop recording</i> when you're done. Lethal Cuts records with OBS (free; get it from obsproject.com) and opens the
+recording in the Editor. It records the game, your computer's sound (including Discord) and your microphone.</p>
+<p><b>Playing in person?</b> Record on a phone:</p>
 <ul>
 <li><b>Record in 4K at 30 fps.</b> The tall Shorts clip is cut out of the middle of the picture, so starting in 4K keeps it sharp.
 On iPhone: Settings &gt; Camera &gt; Record Video &gt; 4K at 30 fps.</li>
@@ -37,7 +41,7 @@ the crop box carries over from clip to clip because the camera usually stays put
 """
 
 STEPS = """
-<a name="steps"></a><h2>Step by step</h2>
+<a name="steps"></a><h2>Making Shorts, step by step</h2>
 <ol>
 <li><b>Open the game video.</b> Click <i>Open video</i>, or drag the file onto the window. iPhone .mov files work as they are.</li>
 <li><b>Skim for good moments.</b> Use the 2x, 3x or 4x speed buttons, the arrow keys, or click anywhere on the timeline.</li>
@@ -56,6 +60,20 @@ then <i>Post to YouTube</i> or <i>Post to TikTok</i>: the upload page opens and 
 </ol>
 <p>Your clips save by themselves into a small <i>.lcproj</i> file next to the video. Close the program any time and open the
 video again later to pick up where you left off.</p>
+"""
+
+LONG = """
+<a name="long"></a><h2>Making a long video</h2>
+<p>A long video is one normal widescreen video of the whole game for YouTube, with the dead stretches cut out.</p>
+<ol>
+<li><b>Open the game video</b> in the Editor and click <i>Long video</i> at the top right.</li>
+<li><b>Mark what to cut.</b> Press <span class="key">{mark_start}</span> where a dead stretch starts (shuffling, a long think,
+a break) and <span class="key">{mark_end}</span> where it ends. It shows striped red on the timeline. Cuts that overlap join into one.</li>
+<li><b>Check the flow.</b> Press <span class="key">{preview}</span> to watch from where you are with every cut skipped.</li>
+<li><b>Export.</b> Click <i>Export long video</i>. It goes in the <i>Long videos</i> folder and the Post tab. A long game takes a
+while to export; the window shows how long is left. The size (1080p or the recording's own size) is in Settings.</li>
+</ol>
+<p>Your Shorts clips and your cuts are kept separately, so you can make both from the same recording. Switch back with <i>Shorts</i>.</p>
 """
 
 SHORTS = """
@@ -106,7 +124,8 @@ class GuidePage(QWidget):
         rows += '<tr><td><span class="key">&nbsp;F2&nbsp;</span></td><td>Rename the selected clip</td></tr>'
         hotkeys = f'<a name="hotkeys"></a><h2>Hotkey cheat sheet</h2><p>Change any of these in Settings.</p><table>{rows}</table>'
         contents = ('<p><a href="#recording">Recording tips</a> &nbsp;|&nbsp; <a href="#steps">Step by step</a>'
-                    ' &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a> &nbsp;|&nbsp; <a href="#shorts">Shorts tips</a></p>')
+                    ' &nbsp;|&nbsp; <a href="#long">Long videos</a> &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a>'
+                    ' &nbsp;|&nbsp; <a href="#shorts">Shorts tips</a></p>')
         html = (f"<h1>How to use Lethal Cuts</h1>{contents}{RECORDING}"
-                f"{STEPS.format(**keys)}{hotkeys}{SHORTS}")
+                f"{STEPS.format(**keys)}{LONG.format(**keys)}{hotkeys}{SHORTS}")
         self.browser.setHtml(html)

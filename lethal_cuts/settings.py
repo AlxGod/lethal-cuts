@@ -60,6 +60,8 @@ class Settings:
     clip_color_b: str = "#7b4fc9"
     crop_color: str = "#f0b840"
     walkthrough_done: bool = False
+    obs_exe: str = ""         # OBS's program file, if it isn't where the OBS installer puts it
+    open_after_record: bool = True
 
     def key(self, action: str) -> str:
         return self.hotkeys.get(action) or ACTIONS[action][1]

@@ -14,6 +14,11 @@ HELP = {
             "The video keeps playing, and the clip is saved the moment you press O.",
     "timeline": "The whole game from left to right. Each numbered bar is a clip. Click anywhere to jump there; "
                 "click a bar to pick that clip.",
+    "record": "For games played on the computer, like Tabletop Simulator. Click Start recording and Lethal Cuts "
+              "starts OBS (the free recorder) by the clock, recording the game window, your computer's sound "
+              "(the game and your friends on Discord) and your microphone. Click Stop recording when the game's "
+              "over and it opens in the Editor, ready to clip or cut. Recordings go in the Recordings folder.\n\n"
+              "Recording in person on a phone? Skip this tab: copy the video to the PC and open it in the Editor.",
     "mode": "Shorts: mark the best moments and each one becomes a tall clip for Shorts and TikTok.\n\n"
             "Long video: make one normal widescreen video of the whole game. Mark the dead stretches "
             "(shuffling, long thinks, bathroom breaks) and they're cut out; everything else stays in. "

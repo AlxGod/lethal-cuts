@@ -26,6 +26,7 @@ from .help import HELP, HelpButton, with_help
 from .library import Library
 from .settings import QUALITIES, Settings
 from .post_page import PostPage
+from .record_page import RecordPage
 from .settings_page import SettingsPage
 from .project import Clip, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
@@ -281,9 +282,14 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(self.settings)
         self.settings_page.changed.connect(self.apply_settings)
         self.tabs = QTabWidget()
+        self.record_page = RecordPage(self.settings)
+        self.record_page.finished.connect(self._on_recording_done)
+        self.record_page.status.connect(lambda text: self.statusBar().showMessage(text))
         self.post_page = PostPage(self.library)
         self.post_page.open_folder.connect(lambda: self.settings_page.open_folder())
         self.post_page.change_folder.connect(lambda: self.settings_page.choose_folder())
+        self.editor_page = container
+        self.tabs.addTab(self.record_page, "Record")
         self.tabs.addTab(container, "Editor")
         self.tabs.addTab(self.post_page, "Post")
         self.tabs.addTab(self.guide, "Guide")
@@ -414,8 +420,6 @@ class MainWindow(QMainWindow):
             self.shortcuts.append(sc)
         self.open_action.setShortcut(QKeySequence(s.key("open")))
         self.export_action.setShortcut(QKeySequence(s.key("export")))
-        self.mark_in_btn.setText(f"Mark start  ({s.key('mark_start')})")
-        self.mark_out_btn.setText(f"Mark end  ({s.key('mark_end')})")
         self._refresh_mode_labels()
         self.play_btn.setToolTip(f"Play or pause ({s.key('play_pause')})")
         for n in SPEEDS:
@@ -425,15 +429,16 @@ class MainWindow(QMainWindow):
         self.video.viewport().update()
         self.guide.refresh(s)
         self.post_page.show_folder(save_folder(s))
+        self.record_page.refresh(s)
         self._refresh_tips()
 
     def _editor_key(self, handler):
         """Hotkeys only work on the Editor tab, so typing in Settings or reading the Guide is safe."""
-        if self.tabs.currentIndex() == 0 and not (self.walkthrough and self.walkthrough.active):
+        if self.tabs.currentWidget() is self.editor_page and not (self.walkthrough and self.walkthrough.active):
             handler()
 
     def _on_tab_changed(self, index: int):
-        if index != 0:
+        if self.tabs.widget(index) is not self.editor_page:
             self.player.pause()
         if self.tabs.widget(index) is self.post_page:
             self.post_page.refresh()
@@ -442,14 +447,15 @@ class MainWindow(QMainWindow):
 
     # --- first-time walkthrough ---
     def start_walkthrough(self):
-        self.tabs.setCurrentIndex(0)
+        self.tabs.setCurrentWidget(self.editor_page)
         s = self.settings
         steps = [
             (None, "Welcome to Lethal Cuts",
              "This turns a long game recording into short vertical clips for YouTube Shorts and TikTok. "
              "Here's a quick look around. It takes about a minute."),
             (self.open_btn, "1. Open a game video",
-             "Click Open video, or drag the file onto the window. iPhone videos work as they are."),
+             "Click Open video, or drag the file onto the window. iPhone videos work as they are. "
+             "Playing Tabletop Simulator instead? The Record tab records it with OBS and opens it here when you stop."),
             (self.speed_group.button(4), "2. Skim through the game",
              f"Play at 2x, 3x or 4x speed to get through a long game fast. The arrow keys jump {s.step_seconds:g} seconds."),
             (self.mark_out_btn, "3. Mark the good moments",
@@ -926,7 +932,14 @@ class MainWindow(QMainWindow):
             else "Making Shorts: press I and O around the best moments.")
 
     def _refresh_mode_labels(self):
-        key = self.settings.key("preview")
+        s = self.settings
+        if self.long_mode:
+            self.mark_in_btn.setText(f"Cut from  ({s.key('mark_start')})")
+            self.mark_out_btn.setText(f"Cut to  ({s.key('mark_end')})")
+        else:
+            self.mark_in_btn.setText(f"Mark start  ({s.key('mark_start')})")
+            self.mark_out_btn.setText(f"Mark end  ({s.key('mark_end')})")
+        key = s.key("preview")
         self.preview_btn.setText(f"Preview long video  ({key})" if self.long_mode else f"Preview vertical  ({key})")
         self.preview_btn.setToolTip("Play the long video with the cuts skipped" if self.long_mode
                                     else "Play the selected clip exactly as the tall phone video will look")
@@ -1035,7 +1048,19 @@ class MainWindow(QMainWindow):
         except OSError as e:
             self.statusBar().showMessage(f"Couldn't save progress: {e}")
 
+    def _on_recording_done(self, video):
+        if video:
+            self.tabs.setCurrentWidget(self.editor_page)
+            self.open_video(Path(video))
+
     def closeEvent(self, event):
+        if self.record_page.recording:
+            answer = QMessageBox.question(self, "Still recording",
+                                          "OBS is still recording. Stop the recording and close Lethal Cuts?")
+            if answer != QMessageBox.Yes:
+                event.ignore()
+                return
+            self.record_page.shutdown()
         self.save_now()
         self.thumbs.stop()
         self.post_page.shutdown()
