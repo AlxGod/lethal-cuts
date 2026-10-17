@@ -85,7 +85,7 @@ class ExportWorker(QObject):
 
 class ExportDialog(QDialog):
     def __init__(self, video: Path, clips: list[Clip], folder: Path, parent=None,
-                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY):
+                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY, worker=None, title: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Exporting clips")
         self.setModal(True)
@@ -97,7 +97,8 @@ class ExportDialog(QDialog):
         self.go_to_post = False
         self._started = time.monotonic()
 
-        self.title = QLabel(f"Making {len(clips)} vertical clip{'s' if len(clips) != 1 else ''}...")
+        self.long = worker is not None
+        self.title = QLabel(title or f"Making {len(clips)} vertical clip{'s' if len(clips) != 1 else ''}...")
         self.title.setObjectName("panelTitle")
         self.step = QLabel("Starting")
         self.bar = QProgressBar()
@@ -133,7 +134,7 @@ class ExportDialog(QDialog):
 
         # Each clip is its own copy, so nothing changes under the export while it runs.
         self.clips = [replace(c) for c in clips]
-        self.worker = ExportWorker(video, self.clips, folder, crf, cq)
+        self.worker = worker or ExportWorker(video, self.clips, folder, crf, cq)
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
@@ -168,9 +169,10 @@ class ExportDialog(QDialog):
             self.title.setText("Export cancelled")
             self.step.setText(f"{n} clip{'s' if n != 1 else ''} finished before you cancelled.")
         else:
-            self.title.setText(f"{n} clip{'s' if n != 1 else ''} ready to post")
+            self.title.setText("Long video ready to post" if self.long else f"{n} clip{'s' if n != 1 else ''} ready to post")
             self.step.setText(f"Saved in {self.folder}")
-            self.detail.setText("They're waiting in the Post tab, where you can watch them and post one at a time.")
+            self.detail.setText("It's waiting in the Post tab." if self.long else
+                                "They're waiting in the Post tab, where you can watch them and post one at a time.")
 
     def _go_to_post(self):
         self.go_to_post = True

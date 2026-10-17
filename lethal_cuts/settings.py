@@ -40,6 +40,12 @@ QUALITIES = {
 }
 
 
+LONG_SIZES = {
+    "1080": "1080p (faster to make and upload)",
+    "source": "Same as the recording (sharpest, e.g. 4K)",
+}
+
+
 @dataclass
 class Settings:
     hotkeys: dict = field(default_factory=lambda: {k: v[1] for k, v in ACTIONS.items()})
@@ -48,6 +54,7 @@ class Settings:
     step_seconds: float = 5.0  # how far the arrow keys jump
     save_folder: str = ""     # where all videos go; filled in on the first start (see folders.py)
     quality: str = "high"
+    long_size: str = "1080"   # long videos: "1080" (faster, smaller) or "source" (same size as the recording)
     nudges: bool = True       # friendly tips while working
     clip_color_a: str = "#b0304a"
     clip_color_b: str = "#7b4fc9"
@@ -95,6 +102,8 @@ def load() -> Settings:
             s.__dict__[f.name] = value
     if s.quality not in QUALITIES:
         s.quality = "high"
+    if s.long_size not in LONG_SIZES:
+        s.long_size = "1080"
     return s
 
 

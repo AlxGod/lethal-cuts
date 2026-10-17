@@ -16,10 +16,12 @@ from . import crop as cropmath
 from . import updater
 from . import settings as settings_mod
 from .clip_list import ClipList
-from .folders import default_save_folder, save_folder, shorts_folder
+from .cut_list import CutList
+from .folders import default_save_folder, long_videos_folder, save_folder, shorts_folder
 from . import __version__
 from .export_dialog import ExportDialog
 from .guide import GuidePage
+from .long_export import LongExportWorker, kept_length
 from .help import HELP, HelpButton, with_help
 from .library import Library
 from .settings import QUALITIES, Settings
@@ -63,7 +65,9 @@ class MainWindow(QMainWindow):
         self.project: Project | None = None
         self.library = Library.load()
         self.pending_start: float | None = None
-        self.last_deleted: Clip | None = None
+        self.last_deleted: tuple[bool, Clip] | None = None  # (was it a cut, the clip or cut)
+        self.long_mode = False      # Editor is making a long video (marks are cuts) instead of Shorts
+        self.long_preview = False   # playing the long video with the cuts skipped
         self._restore_position: float | None = None
 
         # Player
@@ -155,8 +159,12 @@ class MainWindow(QMainWindow):
         self.clip_list.clip_selected.connect(self._on_list_selection)
         self.clip_list.clip_activated.connect(self._jump_to_clip)
         self.clip_list.name_changed.connect(self._on_name_changed)
+        self.cut_list = CutList()
+        self.cut_list.cut_selected.connect(self._on_list_selection)
+        self.cut_list.cut_activated.connect(self._jump_to_clip)
+        self.cut_list.hide()
         self.delete_btn = QPushButton("Delete clip")
-        self.delete_btn.setToolTip("Delete the selected clip (Delete key). Ctrl+Z brings it back.")
+        self.delete_btn.setToolTip("Delete the selected one (Delete key). Ctrl+Z brings it back.")
         self.delete_btn.clicked.connect(self.delete_selected)
         self.preview_btn = QPushButton()
         self.preview_btn.setObjectName("previewButton")
@@ -194,12 +202,35 @@ class MainWindow(QMainWindow):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        clips_title = QLabel("Clips")
-        clips_title.setObjectName("panelTitle")
+        # What's being made: Shorts from clips, or one long video with the dead parts cut out
+        self.mode_group = QButtonGroup(self)
+        self.shorts_mode_btn = QPushButton("Shorts")
+        self.shorts_mode_btn.setToolTip("Mark the best moments: each one becomes a tall clip for Shorts and TikTok")
+        self.long_mode_btn = QPushButton("Long video")
+        self.long_mode_btn.setToolTip("Make one widescreen video of the whole game, with the dead stretches cut out")
+        for i, b in enumerate((self.shorts_mode_btn, self.long_mode_btn)):
+            b.setObjectName("speedButton")
+            b.setCheckable(True)
+            self.mode_group.addButton(b, i)
+        self.shorts_mode_btn.setChecked(True)
+        self.mode_group.idClicked.connect(lambda i: self.set_mode(i == 1))
+        making = QLabel("Making:")
+        making.setObjectName("dimLabel")
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(making)
+        mode_row.addWidget(self.shorts_mode_btn)
+        mode_row.addWidget(self.long_mode_btn)
+        mode_row.addWidget(HelpButton(HELP["mode"]))
+        mode_row.addStretch(1)
+        right_layout.addLayout(mode_row)
+        right_layout.addSpacing(4)
+        self.list_title = QLabel("Clips")
+        self.list_title.setObjectName("panelTitle")
+        self.list_help = HelpButton(HELP["clips"])
         title_row = QHBoxLayout()
-        title_row.addWidget(clips_title)
+        title_row.addWidget(self.list_title)
         title_row.addStretch(1)
-        title_row.addWidget(HelpButton(HELP["clips"]))
+        title_row.addWidget(self.list_help)
         right_layout.addLayout(title_row)
         # Friendly tips about the picked clip (can be turned off in Settings)
         self.tip_label = QLabel()
@@ -207,15 +238,31 @@ class MainWindow(QMainWindow):
         self.tip_label.setWordWrap(True)
         self.tip_label.hide()
         right_layout.addWidget(self.tip_label)
+        self.long_note = QLabel("Mark the parts to cut out: press I where a dead stretch starts and O where it ends. "
+                                "Everything else stays in the long video.")
+        self.long_note.setObjectName("dimLabel")
+        self.long_note.setWordWrap(True)
+        self.long_note.hide()
+        right_layout.addWidget(self.long_note)
         right_layout.addWidget(self.clip_list, 1)
+        right_layout.addWidget(self.cut_list, 1)
+        self.long_summary = QLabel()
+        self.long_summary.setObjectName("timeLabel")
+        self.long_summary.setWordWrap(True)
+        self.long_summary.hide()
+        right_layout.addWidget(self.long_summary)
         right_layout.addWidget(self.nudge_box)
+        self.preview_help = HelpButton(HELP["preview"])
+        self.export_help = HelpButton(HELP["export"])
         clip_buttons = QHBoxLayout()
-        clip_buttons.addLayout(with_help(self.preview_btn, "preview", stretch=True), 1)
+        clip_buttons.addWidget(self.preview_btn, 1)
+        clip_buttons.addWidget(self.preview_help)
         clip_buttons.addLayout(with_help(self.delete_btn, "delete"))
         right_layout.addLayout(clip_buttons)
         right_layout.addSpacing(6)
         export_buttons = QHBoxLayout()
-        export_buttons.addLayout(with_help(self.export_btn, "export", stretch=True), 1)
+        export_buttons.addWidget(self.export_btn, 1)
+        export_buttons.addWidget(self.export_help)
         export_buttons.addLayout(with_help(self.post_btn, "post_clips"))
         right_layout.addLayout(export_buttons)
 
@@ -369,7 +416,7 @@ class MainWindow(QMainWindow):
         self.export_action.setShortcut(QKeySequence(s.key("export")))
         self.mark_in_btn.setText(f"Mark start  ({s.key('mark_start')})")
         self.mark_out_btn.setText(f"Mark end  ({s.key('mark_end')})")
-        self.preview_btn.setText(f"Preview vertical  ({s.key('preview')})")
+        self._refresh_mode_labels()
         self.play_btn.setToolTip(f"Play or pause ({s.key('play_pause')})")
         for n in SPEEDS:
             self.speed_group.button(n).setToolTip(f"Play at {n}x speed for skimming (key {s.key(f'speed_{n}')})")
@@ -417,7 +464,10 @@ class MainWindow(QMainWindow):
              f"Press {s.key('preview')} to see exactly how the phone video will look."),
             (self.export_btn, "7. Export",
              "Export all clips makes each one a ready-to-post vertical video with the volume evened out."),
-            (self.tabs.tabBar(), "8. Post them one at a time",
+            (self.long_mode_btn, "8. Long videos too",
+             "Switch to Long video to make one normal widescreen video of the whole game instead. "
+             "I and O then mark the dead stretches to cut out, and everything else stays in."),
+            (self.tabs.tabBar(), "9. Post them one at a time",
              "The Post tab keeps every finished clip from every game. Watch them, post the best one to YouTube or "
              "TikTok, and tick it off. Posted clips move to their own list, so you always know what's left."),
             (self.tabs.tabBar(), "Need help later?",
@@ -454,7 +504,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_tips(self):
         index = self.clip_list.selected_index()
-        if not self.settings.nudges or not self.project or index < 0:
+        if not self.settings.nudges or not self.project or index < 0 or self.long_mode:
             self.tip_label.hide()
             return
         tips = self._clip_tips(index)
@@ -485,9 +535,11 @@ class MainWindow(QMainWindow):
         self.video.set_has_video(True)
         self.setWindowTitle(f"Lethal Cuts - {path.name}")
         self._refresh_clips()
-        n = len(self.project.clips)
+        n, cuts = len(self.project.clips), len(self.project.cuts)
+        saved = [f"{n} clip{'s' if n != 1 else ''}"] if n else []
+        saved += [f"{cuts} cut{'s' if cuts != 1 else ''}"] if cuts else []
         self.statusBar().showMessage(
-            f"Opened {path.name}. " + (f"{n} saved clip{'s' if n != 1 else ''} loaded." if n else "Press I at the start of a good moment.")
+            f"Opened {path.name}. " + (f"Loaded {' and '.join(saved)}." if saved else "Press I at the start of a good moment.")
         )
 
     def _on_media_status(self, status):
@@ -506,6 +558,7 @@ class MainWindow(QMainWindow):
     def _on_duration(self, ms: int):
         self.timeline.set_duration(ms / 1000)
         self._refresh_position()
+        self._refresh_long_summary()
 
     def _on_player_error(self, error, message):
         QMessageBox.warning(self, "Lethal Cuts", f"This video couldn't be played.\n\n{message}")
@@ -543,6 +596,15 @@ class MainWindow(QMainWindow):
 
     def _refresh_position(self):
         pos = self.current_time()
+        if self.long_preview and self.project and self.player.playbackState() == QMediaPlayer.PlayingState:
+            for cut in self.project.cuts:
+                if cut.start <= pos < cut.end - 0.05:
+                    if cut.end >= self.player.duration() / 1000 - 0.1:
+                        self.stop_preview()
+                        self.statusBar().showMessage("That's the end of the long video.")
+                    else:
+                        self.player.setPosition(int(cut.end * 1000))  # jump over the cut
+                    break
         if self.preview_clip and pos >= self.preview_clip.end and self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.statusBar().showMessage("End of the clip. Space watches it again; P or Esc goes back.")
@@ -574,6 +636,9 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"That clip is too short. Let the video play past the start mark, then press {self.settings.key('mark_end')}.")
             return
+        if self.long_mode:
+            self._add_cut(start, end)
+            return
         # Extra lead-in and lead-out from Settings, since it's easy to press a key a little late.
         duration = self.player.duration() / 1000 or end + self.settings.pad_after
         start = max(0.0, start - self.settings.pad_before)
@@ -594,6 +659,22 @@ class MainWindow(QMainWindow):
             message = f"Clip {index + 1} saved. It's {clip.length:.0f} seconds long: most strong Shorts are under 45 seconds."
         self.statusBar().showMessage(message)
 
+    def _add_cut(self, start: float, end: float):
+        """Long video: a dead stretch to leave out. Overlapping cuts are joined into one."""
+        cut = Clip(start, end)
+        for other in [c for c in self.project.cuts if c.start <= end and start <= c.end]:
+            cut.start, cut.end = min(cut.start, other.start), max(cut.end, other.end)
+            self.project.cuts.remove(other)
+        self.project.cuts.append(cut)
+        self.project.cuts.sort(key=lambda c: c.start)
+        index = next(i for i, c in enumerate(self.project.cuts) if c is cut)
+        self.pending_start = None
+        self.timeline.set_pending_start(None)
+        self._refresh_clips(select=index)
+        self._changed()
+        self.statusBar().showMessage(f"Cut {index + 1} marked ({format_time(cut.length)} left out). "
+                                     f"Press P to watch the long video with the cuts skipped.")
+
     def _confirm_overlap(self, overlaps: list[int]) -> bool:
         lines = [
             f"Clip {i + 1}{' (' + self.project.clips[i].name + ')' if self.project.clips[i].name else ''}: "
@@ -607,7 +688,7 @@ class MainWindow(QMainWindow):
         return answer == QMessageBox.Yes
 
     def escape(self):
-        if self.preview_clip:
+        if self.preview_clip or self.long_preview:
             self.stop_preview()
         else:
             self.cancel_mark()
@@ -621,7 +702,7 @@ class MainWindow(QMainWindow):
     # --- crop box and vertical preview ---
     def _show_selected_crop(self):
         index = self.clip_list.selected_index()
-        if not self.project or index < 0:
+        if not self.project or index < 0 or self.long_mode:
             self.video.show_crop(None)
             return
         clip = self.project.clips[index]
@@ -632,7 +713,7 @@ class MainWindow(QMainWindow):
 
     def _on_crop_changed(self, crop):
         index = self.clip_list.selected_index()
-        if not self.project or index < 0:
+        if not self.project or index < 0 or self.long_mode:
             return
         self.project.clips[index].crop = crop
         self.project.last_crop = replace(crop)
@@ -640,8 +721,11 @@ class MainWindow(QMainWindow):
         self._refresh_tips()
 
     def toggle_preview(self):
-        if self.preview_clip:
+        if self.preview_clip or self.long_preview:
             self.stop_preview()
+            return
+        if self.long_mode:
+            self._start_long_preview()
             return
         index = self.clip_list.selected_index()
         if not self.project or index < 0:
@@ -655,7 +739,24 @@ class MainWindow(QMainWindow):
         self.player.play()
         self.statusBar().showMessage(f"Previewing clip {index + 1} as a phone video. P or Esc goes back.")
 
+    def _start_long_preview(self):
+        if not self.project:
+            return
+        duration = self.player.duration() / 1000
+        if duration and self.current_time() >= duration - 0.2:
+            self.seek(0)  # at the end: watch from the start
+        self.long_preview = True
+        self.preview_btn.setChecked(True)
+        self.player.play()
+        self.statusBar().showMessage("Playing the long video with the cuts skipped. P or Esc stops.")
+
     def stop_preview(self):
+        if self.long_preview:
+            self.long_preview = False
+            self.preview_btn.setChecked(False)
+            self.player.pause()
+            self.statusBar().showMessage("Stopped the long video preview.")
+            return
         if self.preview_clip is None:
             return
         self.preview_clip = None
@@ -672,6 +773,9 @@ class MainWindow(QMainWindow):
 
     def export_all(self):
         if not self.project:
+            return
+        if self.long_mode:
+            self.export_long()
             return
         clips = self.project.clips
         if not clips:
@@ -698,6 +802,36 @@ class MainWindow(QMainWindow):
         if dialog.go_to_post:
             self.show_post()
 
+    def export_long(self):
+        """Makes one widescreen video of everything that isn't cut out."""
+        duration = self.player.duration() / 1000
+        if duration <= 0:
+            self.statusBar().showMessage("The video is still loading. Try again in a moment.")
+            return
+        self.stop_preview()
+        self.player.pause()
+        self.save_now()
+        video = self.project.video_path
+        cuts = [replace(c) for c in self.project.cuts]
+        length = kept_length(cuts, duration)
+        _, crf, cq = QUALITIES[self.settings.quality]
+        folder = long_videos_folder(self.settings)
+        worker = LongExportWorker(video, cuts, duration, folder, self.settings.long_size, crf, cq)
+        dialog = ExportDialog(video, [], folder, self, worker=worker,
+                              title=f"Making the long video ({format_time(length, tenths=False)})...")
+        dialog.exec()
+        for file in dialog.files:
+            self.library.add(file, video.stem, video, length, kind="long")
+        if dialog.files:
+            try:
+                self.library.save()
+            except OSError as e:
+                QMessageBox.warning(self, "Lethal Cuts", f"The video was made, but the Post list couldn't be saved:\n{e}")
+            if not dialog.error and not dialog.cancelled:
+                self.statusBar().showMessage(f"Long video saved in {folder}. It's in the Post tab.")
+        if dialog.go_to_post:
+            self.show_post()
+
     def _confirm_export_tips(self) -> bool:
         tips = [t for i in range(len(self.project.clips)) for t in self._clip_tips(i)]
         if not tips:
@@ -717,10 +851,10 @@ class MainWindow(QMainWindow):
 
     # --- fine-tuning ---
     def nudge(self, edge: str, delta: float):
-        index = self.clip_list.selected_index()
+        index = self.active_list().selected_index()
         if not self.project or index < 0:
             return
-        clip = self.project.clips[index]
+        clip = self.items()[index]
         duration = self.player.duration() / 1000 or clip.end
         if edge == "start":
             clip.start = round(min(max(clip.start + delta, 0.0), clip.end - MIN_CLIP_SECONDS), 3)
@@ -731,8 +865,13 @@ class MainWindow(QMainWindow):
         # Pause on the edge being moved so the user can see exactly where it lands.
         self.player.pause()
         self.seek(shown)
-        self.project.sort()
-        self._refresh_clips(select=self.project.index_of(clip))
+        if self.long_mode:
+            self.project.cuts.sort(key=lambda c: c.start)
+            index = next(i for i, c in enumerate(self.project.cuts) if c is clip)
+        else:
+            self.project.sort()
+            index = self.project.index_of(clip)
+        self._refresh_clips(select=index)
         self._changed()
 
     # --- clip list ---
@@ -751,18 +890,73 @@ class MainWindow(QMainWindow):
             if round(thumbnail_time(clip.start, clip.length), 2) == seconds:
                 self.clip_list.set_thumbnail(row, image)
 
+    def items(self) -> list[Clip]:
+        """What the Editor is working on: Shorts clips, or a long video's cuts."""
+        if not self.project:
+            return []
+        return self.project.cuts if self.long_mode else self.project.clips
+
+    def active_list(self):
+        return self.cut_list if self.long_mode else self.clip_list
+
+    def set_mode(self, long: bool):
+        """Switches the Editor between making Shorts and making a long video."""
+        self.mode_group.button(1 if long else 0).setChecked(True)
+        if long == self.long_mode:
+            return
+        self.stop_preview()
+        self.cancel_mark()
+        self.long_mode = long
+        self.timeline.cut_style = long
+        self.list_title.setText("Cuts" if long else "Clips")
+        self.list_help.help_text = HELP["cuts" if long else "clips"]
+        self.clip_list.setVisible(not long)
+        self.cut_list.setVisible(long)
+        self.long_note.setVisible(long)
+        self.long_summary.setVisible(long)
+        self.nudge_box.setTitle("Fine-tune the selected cut" if long else "Fine-tune the selected clip")
+        self.delete_btn.setText("Delete cut" if long else "Delete clip")
+        self.export_btn.setText("Export long video" if long else "Export all clips")
+        self.export_help.help_text = HELP["export_long" if long else "export"]
+        self.preview_help.help_text = HELP["preview_long" if long else "preview"]
+        self._refresh_mode_labels()
+        self._refresh_clips()
+        self.statusBar().showMessage(
+            "Making a long video: press I and O around the dead stretches to cut them out." if long
+            else "Making Shorts: press I and O around the best moments.")
+
+    def _refresh_mode_labels(self):
+        key = self.settings.key("preview")
+        self.preview_btn.setText(f"Preview long video  ({key})" if self.long_mode else f"Preview vertical  ({key})")
+        self.preview_btn.setToolTip("Play the long video with the cuts skipped" if self.long_mode
+                                    else "Play the selected clip exactly as the tall phone video will look")
+
+    def _refresh_long_summary(self):
+        duration = self.player.duration() / 1000
+        if not self.project or duration <= 0:
+            self.long_summary.setText("")
+            return
+        kept = kept_length(self.project.cuts, duration)
+        self.long_summary.setText(f"Long video: {format_time(kept, tenths=False)}   "
+                                  f"(cutting {format_time(duration - kept, tenths=False)} "
+                                  f"of {format_time(duration, tenths=False)})")
+
     def _refresh_clips(self, select: int = -1):
-        clips = self.project.clips if self.project else []
-        self.clip_list.set_clips(clips, select, self._thumb_for)
-        self.timeline.set_clips(clips, select)
+        items = self.items()
+        if self.long_mode:
+            self.cut_list.set_cuts(items, select)
+        else:
+            self.clip_list.set_clips(items, select, self._thumb_for)
+        self.timeline.set_clips(items, select)
         self.timeline.set_pending_start(self.pending_start)
+        self._refresh_long_summary()
         self._update_enabled()
 
     def _select_clip(self, index: int):
-        self.clip_list.selectRow(index)
+        self.active_list().selectRow(index)
 
     def _on_list_selection(self, index: int):
-        self.timeline.set_clips(self.project.clips if self.project else [], index)
+        self.timeline.set_clips(self.items(), index)
         self._update_enabled()
         if self.preview_clip and index >= 0 and self.project.clips[index] is not self.preview_clip:
             # Picking another clip during preview previews that one instead.
@@ -771,8 +965,9 @@ class MainWindow(QMainWindow):
             self.player.play()
 
     def _jump_to_clip(self, index: int):
-        if self.project and 0 <= index < len(self.project.clips):
-            self.seek(self.project.clips[index].start)
+        items = self.items()
+        if 0 <= index < len(items):
+            self.seek(items[index].start)
 
     def _on_name_changed(self, index: int, name: str):
         if self.project and 0 <= index < len(self.project.clips):
@@ -781,37 +976,45 @@ class MainWindow(QMainWindow):
             self._refresh_tips()
 
     def delete_selected(self):
-        index = self.clip_list.selected_index()
+        index = self.active_list().selected_index()
         if not self.project or index < 0:
             return
         self.stop_preview()
-        self.last_deleted = self.project.clips.pop(index)
+        self.last_deleted = (self.long_mode, self.items().pop(index))
         self._refresh_clips()
         self._changed()
-        self.statusBar().showMessage(f"Clip {index + 1} deleted. Press Ctrl+Z to bring it back.")
+        word = "Cut" if self.long_mode else "Clip"
+        self.statusBar().showMessage(f"{word} {index + 1} deleted. Press Ctrl+Z to bring it back.")
 
     def undo_delete(self):
         if not self.project or self.last_deleted is None:
             return
-        index = self.project.add_clip(self.last_deleted)
+        was_cut, item = self.last_deleted
         self.last_deleted = None
+        self.set_mode(was_cut)
+        if was_cut:
+            self.project.cuts.append(item)
+            self.project.cuts.sort(key=lambda c: c.start)
+            index = next(i for i, c in enumerate(self.project.cuts) if c is item)
+        else:
+            index = self.project.add_clip(item)
         self._refresh_clips(select=index)
         self._changed()
-        self.statusBar().showMessage(f"Clip {index + 1} restored.")
+        self.statusBar().showMessage(f"{'Cut' if was_cut else 'Clip'} {index + 1} restored.")
 
     def _update_enabled(self):
         has = self.project is not None
         for w in [self.play_btn, self.mark_in_btn, self.mark_out_btn, *self.speed_group.buttons()]:
             w.setEnabled(has)
-        self.export_btn.setEnabled(has and bool(self.project.clips))
-        index = self.clip_list.selected_index()
-        selected = has and index >= 0
+        self.export_btn.setEnabled(has and (self.long_mode or bool(self.project.clips)))
+        index = self.active_list().selected_index()
+        selected = has and 0 <= index < len(self.items())
         self.delete_btn.setEnabled(selected)
-        self.preview_btn.setEnabled(selected)
+        self.preview_btn.setEnabled(has if self.long_mode else selected)
         self._show_selected_crop()
         self.nudge_box.setEnabled(selected)
         if selected:
-            clip = self.project.clips[index]
+            clip = self.items()[index]
             self.start_value.setText(_precise(clip.start))
             self.end_value.setText(_precise(clip.end))
         else:

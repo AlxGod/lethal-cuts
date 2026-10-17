@@ -14,6 +14,16 @@ HELP = {
             "The video keeps playing, and the clip is saved the moment you press O.",
     "timeline": "The whole game from left to right. Each numbered bar is a clip. Click anywhere to jump there; "
                 "click a bar to pick that clip.",
+    "mode": "Shorts: mark the best moments and each one becomes a tall clip for Shorts and TikTok.\n\n"
+            "Long video: make one normal widescreen video of the whole game. Mark the dead stretches "
+            "(shuffling, long thinks, bathroom breaks) and they're cut out; everything else stays in. "
+            "Your Shorts clips and your cuts are kept separately, so you can do both with the same recording.",
+    "cuts": "The parts that get cut out of the long video. Press I where a dead stretch starts and O where it ends. "
+            "Cuts that overlap are joined into one. Double-click a row to jump there.",
+    "preview_long": "Plays the long video from where you are, jumping over every cut, so you can check that "
+                    "it flows. Press P or Esc to stop.",
+    "export_long": "Makes one widescreen video of everything that isn't cut out, with the volume evened out for "
+                   "YouTube. The size (1080p or the recording's own size) is in Settings.",
     "clips": "Every clip you've made. Click a name to rename it. Double-click a row to jump to that clip. "
              "Everything saves by itself.",
     "nudge": "Moves the picked clip's start or end by a tenth of a second, for a cleaner cut. "

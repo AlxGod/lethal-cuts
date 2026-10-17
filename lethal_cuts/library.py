@@ -28,6 +28,7 @@ class Short:
     length: float
     exported: str   # when it was exported (ISO date and time)
     posted: dict[str, str] = field(default_factory=dict)  # site key: when it was marked posted
+    kind: str = "short"  # "short" (vertical clip) or "long" (a whole game with the dead parts cut out)
 
     @property
     def path(self) -> Path:
@@ -77,7 +78,8 @@ class Library:
                 posted = item.get("posted") or {}
                 shorts.append(Short(str(item["file"]), str(item["name"]), str(item.get("video", "")),
                                     float(item.get("length", 0)), str(item.get("exported", "")),
-                                    {k: str(v) for k, v in posted.items() if k in SITES}))
+                                    {k: str(v) for k, v in posted.items() if k in SITES},
+                                    "long" if item.get("kind") == "long" else "short"))
             except (KeyError, TypeError, ValueError, AttributeError):
                 continue
         return cls(shorts)
@@ -89,11 +91,11 @@ class Library:
         tmp.write_text(json.dumps({"version": 1, "shorts": [asdict(s) for s in self.shorts]}, indent=2), encoding="utf-8")
         os.replace(tmp, path)
 
-    def add(self, file: str | Path, name: str, video: str | Path, length: float) -> Short:
+    def add(self, file: str | Path, name: str, video: str | Path, length: float, kind: str = "short") -> Short:
         """Records a freshly exported clip. Exporting the same file again updates it and keeps its posted marks."""
         file = str(file)
         old = next((s for s in self.shorts if _same_file(s.file, file)), None)
-        short = Short(file, name, str(video), round(length, 2), now(), dict(old.posted) if old else {})
+        short = Short(file, name, str(video), round(length, 2), now(), dict(old.posted) if old else {}, kind)
         if old:
             self.shorts.remove(old)
         self.shorts.append(short)

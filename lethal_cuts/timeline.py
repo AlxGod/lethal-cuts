@@ -6,7 +6,7 @@ being marked, and the playhead. Clicking or dragging on it jumps the video.
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from .project import Clip, format_time
@@ -15,6 +15,7 @@ CLIP_COLORS = [QColor("#b0304a"), QColor("#7b4fc9")]  # alternate so neighbourin
 SELECTED_COLOR = QColor("#f0b840")
 PLAYHEAD_COLOR = QColor("#ffffff")
 PENDING_COLOR = QColor("#40c08a")
+CUT_COLOR = QColor("#d0404a")  # long videos: the parts being cut out
 
 
 class Timeline(QWidget):
@@ -31,6 +32,7 @@ class Timeline(QWidget):
         self.selected = -1
         self.pending_start: float | None = None
         self.clip_colors = list(CLIP_COLORS)
+        self.cut_style = False  # True while making a long video: the bars are cuts
         self._dragging = False
 
     # --- state from the main window ---
@@ -98,12 +100,21 @@ class Timeline(QWidget):
         for i, clip in enumerate(self.clips):
             x1, x2 = self._x(clip.start), self._x(clip.end)
             rect = QRectF(x1, track.top(), max(x2 - x1, 3), track.height())
-            color = SELECTED_COLOR if i == self.selected else self.clip_colors[i % 2]
-            fill = QColor(color)
-            fill.setAlpha(170)
-            p.setPen(QPen(color, 1))
-            p.setBrush(fill)
-            p.drawRect(rect)
+            if self.cut_style:
+                # Cuts: dark and striped, since these parts get left out
+                color = SELECTED_COLOR if i == self.selected else CUT_COLOR
+                p.setPen(QPen(color, 1))
+                p.setBrush(QColor(20, 8, 12, 220))
+                p.drawRect(rect)
+                p.setBrush(QBrush(color, Qt.BDiagPattern))
+                p.drawRect(rect)
+            else:
+                color = SELECTED_COLOR if i == self.selected else self.clip_colors[i % 2]
+                fill = QColor(color)
+                fill.setAlpha(170)
+                p.setPen(QPen(color, 1))
+                p.setBrush(fill)
+                p.drawRect(rect)
             label = str(i + 1)
             if p.fontMetrics().horizontalAdvance(label) + 4 <= rect.width():
                 p.setPen(QColor("#ffffff"))
@@ -113,12 +124,13 @@ class Timeline(QWidget):
         if self.pending_start is not None:
             x1 = self._x(self.pending_start)
             x2 = self._x(max(self.position, self.pending_start))
-            fill = QColor(PENDING_COLOR)
+            mark = CUT_COLOR if self.cut_style else PENDING_COLOR
+            fill = QColor(mark)
             fill.setAlpha(90)
             p.setPen(Qt.NoPen)
             p.setBrush(fill)
             p.drawRect(QRectF(x1, track.top(), max(x2 - x1, 1), track.height()))
-            p.setPen(QPen(PENDING_COLOR, 2))
+            p.setPen(QPen(mark, 2))
             p.drawLine(int(x1), int(track.top() - 4), int(x1), int(track.bottom() + 4))
 
         # Playhead

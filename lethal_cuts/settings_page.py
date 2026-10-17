@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 
 from . import settings as settings_mod
 from .folders import is_inside_program, save_folder
-from .settings import ACTIONS, QUALITIES, Settings
+from .settings import ACTIONS, LONG_SIZES, QUALITIES, Settings
 
 
 class SettingsPage(QScrollArea):
@@ -82,6 +82,11 @@ class SettingsPage(QScrollArea):
             self.quality.addItem(label, key)
         self.quality.setCurrentIndex(list(QUALITIES).index(s.quality))
         form.addRow("Video quality:", self.quality)
+        self.long_size = QComboBox()
+        for key, label in LONG_SIZES.items():
+            self.long_size.addItem(label, key)
+        self.long_size.setCurrentIndex(list(LONG_SIZES).index(s.long_size))
+        form.addRow("Long video size:", self.long_size)
         layout.addWidget(exp)
 
         # Tips
@@ -130,6 +135,7 @@ class SettingsPage(QScrollArea):
         for w in (self.pad_before, self.pad_after, self.step):
             w.valueChanged.connect(lambda _: self._apply())
         self.quality.currentIndexChanged.connect(lambda _: self._apply())
+        self.long_size.currentIndexChanged.connect(lambda _: self._apply())
         self.nudges.toggled.connect(lambda _: self._apply())
 
     @staticmethod
@@ -204,6 +210,7 @@ class SettingsPage(QScrollArea):
         self.pad_after.setValue(fresh.pad_after)
         self.step.setValue(fresh.step_seconds)
         self.quality.setCurrentIndex(list(QUALITIES).index(fresh.quality))
+        self.long_size.setCurrentIndex(list(LONG_SIZES).index(fresh.long_size))
         self.nudges.setChecked(True)
         for action, edit in self.key_edits.items():
             edit.setKeySequence(QKeySequence(fresh.key(action)))
@@ -215,6 +222,7 @@ class SettingsPage(QScrollArea):
         self.s.pad_after = self.pad_after.value()
         self.s.step_seconds = self.step.value()
         self.s.quality = self.quality.currentData()
+        self.s.long_size = self.long_size.currentData()
         self.s.nudges = self.nudges.isChecked()
         try:
             settings_mod.save(self.s)

@@ -258,7 +258,8 @@ class PostPage(QWidget):
 
     def _caption(self, short: Short) -> str:
         sites = ", ".join(SITES[k][0] for k in SITES if k in short.posted)
-        return f"{short.name}\n{format_time(short.length, tenths=False)}" + (f"  •  {sites}" if sites else "")
+        kind = "Long video  •  " if short.kind == "long" else ""
+        return f"{short.name}\n{kind}{format_time(short.length, tenths=False)}" + (f"  •  {sites}" if sites else "")
 
     def _icon(self, short: Short) -> QIcon:
         image = self.pictures.get(short.file)
@@ -309,7 +310,7 @@ class PostPage(QWidget):
                 box.blockSignals(False)
             return
         self.name_label.setText(short.name)
-        bits = [f"{format_time(short.length, tenths=False)} long"]
+        bits = (["Long video"] if short.kind == "long" else []) + [f"{format_time(short.length, tenths=False)} long"]
         if short.video:
             bits.append(f"from {Path(short.video).name}")
         if short.exported:
