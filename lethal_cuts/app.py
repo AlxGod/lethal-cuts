@@ -30,6 +30,9 @@ QProgressBar::chunk { background: #b0304a; border-radius: 5px; }
 QToolButton#helpButton { color: #c9a6ff; font-weight: bold; border: 1px solid #3d3358; border-radius: 9px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; }
 QToolButton#helpButton:hover { background: #3a2f55; }
 QLabel#tipLabel { background: #3a2f18; color: #f6dc9a; border: 1px solid #6a5420; border-radius: 6px; padding: 6px 8px; }
+QFrame#limitNote { background: #3a2f18; border: 1px solid #6a5420; border-radius: 6px; }
+QFrame#limitNote QLabel { color: #f6dc9a; }
+QPushButton#zoomButton { min-width: 22px; max-width: 22px; padding: 0px; font-weight: bold; }
 QFrame#updateBar { background: #3b2a12; border-bottom: 2px solid #f0b840; }
 QFrame#walkCard { background: #241d33; border: 2px solid #f0b840; border-radius: 10px; }
 QTabWidget::pane { border: none; }

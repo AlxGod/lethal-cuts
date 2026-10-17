@@ -13,7 +13,15 @@ HELP = {
     "mark": "Press Mark start (I) when a great moment begins and Mark end (O) when it's over. "
             "The video keeps playing, and the clip is saved the moment you press O.",
     "timeline": "The whole game from left to right. Each numbered bar is a clip. Click anywhere to jump there; "
-                "click a bar to pick that clip.",
+                "click a bar to pick that clip.\n\n"
+                "Long game? Scroll the mouse wheel over the timeline (or click +) to zoom in, so a few minutes fill "
+                "the bar. The bar under it slides along; Shift + wheel does too. Double-click the timeline to see "
+                "the whole game again.\n\n"
+                "Gold flags are moments marked while recording.",
+    "moments": "Moments you marked while recording, by pressing the moment key (F8 unless you changed it) when "
+               "something great happened. Each one is a gold flag on the timeline, with the few minutes before it "
+               "shaded gold. Moment > (key N) jumps to the start of the next one, so you can watch the lead-up and "
+               "mark the best part with I and O, without watching the whole game. < Moment (Shift+N) goes back.",
     "record": "For games played on the computer, like Tabletop Simulator. Click Start recording and Lethal Cuts "
               "starts OBS (the free recorder) by the clock, recording the game window, your computer's sound "
               "(the game and your friends on Discord) and your microphone. Click Stop recording when the game's "

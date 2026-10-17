@@ -26,6 +26,8 @@ ACTIONS = {
     "speed_2": ("Speed 2x", "2"),
     "speed_3": ("Speed 3x", "3"),
     "speed_4": ("Speed 4x", "4"),
+    "next_moment": ("Jump to the next marked moment", "N"),
+    "prev_moment": ("Jump to the previous marked moment", "Shift+N"),
     "delete": ("Delete the selected clip", "Delete"),
     "undo": ("Bring back a deleted clip", "Ctrl+Z"),
     "export": ("Export all clips", "Ctrl+E"),
@@ -38,6 +40,11 @@ QUALITIES = {
     "high": ("High (recommended)", 19, 21),
     "best": ("Best (biggest files)", 16, 18),
 }
+
+
+# The key pressed during a recording to mark a moment. It works even with the game in front.
+MOMENT_KEYS = ["F6", "F7", "F8", "F9", "F10", "F11", "F12"]
+MOMENT_MINUTES = [1, 2, 3, 5, 10]
 
 
 LONG_SIZES = {
@@ -62,6 +69,10 @@ class Settings:
     walkthrough_done: bool = False
     obs_exe: str = ""         # OBS's program file, if it isn't where the OBS installer puts it
     open_after_record: bool = True
+    moment_key: str = "F8"    # pressed while recording: "something great just happened"
+    moment_minutes: float = 5.0  # each moment covers this many minutes before the key press
+    record_gb_per_hour: float = 0.0  # learned from real recordings (0 = not yet, a safe guess is used)
+    youtube_verified: bool = False   # the YouTube account can take videos over 15 minutes
 
     def key(self, action: str) -> str:
         return self.hotkeys.get(action) or ACTIONS[action][1]
@@ -106,6 +117,10 @@ def load() -> Settings:
         s.quality = "high"
     if s.long_size not in LONG_SIZES:
         s.long_size = "1080"
+    if s.moment_key not in MOMENT_KEYS:
+        s.moment_key = "F8"
+    if s.moment_minutes not in MOMENT_MINUTES:
+        s.moment_minutes = 5.0
     return s
 
 

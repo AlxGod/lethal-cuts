@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 
 from . import settings as settings_mod
 from .folders import is_inside_program, save_folder
-from .settings import ACTIONS, LONG_SIZES, QUALITIES, Settings
+from .settings import ACTIONS, LONG_SIZES, MOMENT_KEYS, MOMENT_MINUTES, QUALITIES, Settings
 
 
 class SettingsPage(QScrollArea):
@@ -58,6 +58,38 @@ class SettingsPage(QScrollArea):
         saving_layout.addWidget(folder_note)
         layout.addWidget(saving)
         self.refresh_folder()
+
+        # Recording
+        rec = QGroupBox("Recording")
+        form = QFormLayout(rec)
+        self.moment_key = QComboBox()
+        self.moment_key.addItems(MOMENT_KEYS)
+        self.moment_key.setCurrentText(s.moment_key)
+        form.addRow("Mark-a-moment key:", self.moment_key)
+        self.moment_minutes = QComboBox()
+        for m in MOMENT_MINUTES:
+            self.moment_minutes.addItem(f"{m} minute{'s' if m != 1 else ''}", float(m))
+        self.moment_minutes.setCurrentIndex(MOMENT_MINUTES.index(int(s.moment_minutes)))
+        form.addRow("Each moment covers the last:", self.moment_minutes)
+        rec_note = QLabel("While recording, press the key when something great happens, even with the game in "
+                          "front. In the Editor, N jumps to that many minutes before each press.")
+        rec_note.setObjectName("dimLabel")
+        rec_note.setWordWrap(True)
+        form.addRow(rec_note)
+        layout.addWidget(rec)
+
+        # Posting
+        posting = QGroupBox("Posting")
+        posting_layout = QVBoxLayout(posting)
+        self.verified = QCheckBox("My YouTube account is verified (it can take videos over 15 minutes)")
+        self.verified.setChecked(s.youtube_verified)
+        posting_layout.addWidget(self.verified)
+        limits_note = QLabel("YouTube: Shorts up to 3 minutes; normal videos up to 15 minutes, or 12 hours once the "
+                             "account has a verified phone number. TikTok: up to 60 minutes.")
+        limits_note.setObjectName("dimLabel")
+        limits_note.setWordWrap(True)
+        posting_layout.addWidget(limits_note)
+        layout.addWidget(posting)
 
         # Clips
         clips = QGroupBox("Clips")
@@ -137,6 +169,9 @@ class SettingsPage(QScrollArea):
         self.quality.currentIndexChanged.connect(lambda _: self._apply())
         self.long_size.currentIndexChanged.connect(lambda _: self._apply())
         self.nudges.toggled.connect(lambda _: self._apply())
+        self.moment_key.currentIndexChanged.connect(lambda _: self._apply())
+        self.moment_minutes.currentIndexChanged.connect(lambda _: self._apply())
+        self.verified.toggled.connect(lambda _: self._apply())
 
     @staticmethod
     def _seconds(value, low, high):
@@ -161,6 +196,11 @@ class SettingsPage(QScrollArea):
             setattr(self.s, attr, color.name())
             self._paint_color_buttons()
             self._apply()
+
+    def refresh_verified(self):
+        self.verified.blockSignals(True)
+        self.verified.setChecked(self.s.youtube_verified)
+        self.verified.blockSignals(False)
 
     def refresh_folder(self):
         self.folder.setText(str(save_folder(self.s)))
@@ -204,7 +244,9 @@ class SettingsPage(QScrollArea):
 
     def _reset(self):
         walkthrough = self.s.walkthrough_done
-        fresh = Settings(walkthrough_done=walkthrough, save_folder=self.s.save_folder)  # never moves their videos
+        # Never moves their videos, and keeps what Lethal Cuts has learned or been told about their accounts
+        fresh = Settings(walkthrough_done=walkthrough, save_folder=self.s.save_folder, obs_exe=self.s.obs_exe,
+                         record_gb_per_hour=self.s.record_gb_per_hour, youtube_verified=self.s.youtube_verified)
         self.s.__dict__.update(fresh.__dict__)
         self.pad_before.setValue(fresh.pad_before)
         self.pad_after.setValue(fresh.pad_after)
@@ -212,6 +254,8 @@ class SettingsPage(QScrollArea):
         self.quality.setCurrentIndex(list(QUALITIES).index(fresh.quality))
         self.long_size.setCurrentIndex(list(LONG_SIZES).index(fresh.long_size))
         self.nudges.setChecked(True)
+        self.moment_key.setCurrentText(fresh.moment_key)
+        self.moment_minutes.setCurrentIndex(MOMENT_MINUTES.index(int(fresh.moment_minutes)))
         for action, edit in self.key_edits.items():
             edit.setKeySequence(QKeySequence(fresh.key(action)))
         self._paint_color_buttons()
@@ -224,6 +268,9 @@ class SettingsPage(QScrollArea):
         self.s.quality = self.quality.currentData()
         self.s.long_size = self.long_size.currentData()
         self.s.nudges = self.nudges.isChecked()
+        self.s.moment_key = self.moment_key.currentText()
+        self.s.moment_minutes = self.moment_minutes.currentData()
+        self.s.youtube_verified = self.verified.isChecked()
         try:
             settings_mod.save(self.s)
         except OSError as e:

@@ -46,6 +46,7 @@ class Project:
     position: float = 0.0  # where playback was when last saved
     last_crop: Crop | None = None  # given to each new clip, since the camera usually doesn't move
     cuts: list[Clip] = field(default_factory=list)  # long video: the dead stretches to leave out
+    moments: list[float] = field(default_factory=list)  # seconds where the moment key was pressed while recording
 
     @property
     def path(self) -> Path:
@@ -75,6 +76,7 @@ class Project:
             "last_crop": asdict(self.last_crop) if self.last_crop else None,
             "clips": [asdict(c) for c in self.clips],
             "cuts": [{"start": round(c.start, 3), "end": round(c.end, 3)} for c in self.cuts],
+            "moments": [round(m, 3) for m in self.moments],
         }
         # Write to a temporary file first, then swap it in, so a crash mid-save
         # can never leave a half-written project file behind.
@@ -99,7 +101,9 @@ def open_project(video_path: Path) -> Project:
     ]
     clips.sort(key=lambda c: c.start)
     cuts = sorted((Clip(float(c["start"]), float(c["end"])) for c in data.get("cuts", [])), key=lambda c: c.start)
-    return Project(video_path, clips, float(data.get("position", 0.0)), Crop.from_dict(data.get("last_crop")), cuts)
+    moments = sorted(float(m) for m in data.get("moments", []))
+    return Project(video_path, clips, float(data.get("position", 0.0)), Crop.from_dict(data.get("last_crop")), cuts,
+                   moments)
 
 
 def format_time(seconds: float, tenths: bool = True) -> str:

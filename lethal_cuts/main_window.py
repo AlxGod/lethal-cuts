@@ -9,7 +9,7 @@ from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
-    QMessageBox, QPushButton, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QScrollBar, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import crop as cropmath
@@ -24,6 +24,7 @@ from .guide import GuidePage
 from .long_export import LongExportWorker, kept_length
 from .help import HELP, HelpButton, with_help
 from .library import Library
+from .limits import SHORTS_MAX, LimitNote, long_video_problems
 from .settings import QUALITIES, Settings
 from .post_page import PostPage
 from .record_page import RecordPage
@@ -124,6 +125,22 @@ class MainWindow(QMainWindow):
         self.mark_out_btn.clicked.connect(self.mark_end)
 
         speed_box.addWidget(HelpButton(HELP["speed"]))
+        # Moments marked with the moment key while recording
+        self.moment_box = QWidget()
+        moment_row = QHBoxLayout(self.moment_box)
+        moment_row.setContentsMargins(0, 0, 0, 0)
+        moment_row.setSpacing(2)
+        self.moment_count = QLabel()
+        self.moment_count.setObjectName("dimLabel")
+        self.prev_moment_btn = QPushButton("< Moment")
+        self.prev_moment_btn.clicked.connect(lambda: self.jump_moment(-1))
+        self.next_moment_btn = QPushButton("Moment >")
+        self.next_moment_btn.clicked.connect(lambda: self.jump_moment(1))
+        moment_row.addWidget(self.moment_count)
+        moment_row.addWidget(self.prev_moment_btn)
+        moment_row.addWidget(self.next_moment_btn)
+        moment_row.addWidget(HelpButton(HELP["moments"]))
+        self.moment_box.hide()
         controls = QHBoxLayout()
         controls.addLayout(with_help(self.open_btn, "open"))
         controls.addSpacing(12)
@@ -131,6 +148,8 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.time_label)
         controls.addSpacing(12)
         controls.addLayout(speed_box)
+        controls.addSpacing(12)
+        controls.addWidget(self.moment_box)
         controls.addStretch(1)
         controls.addWidget(self.mark_in_btn)
         controls.addLayout(with_help(self.mark_out_btn, "mark"))
@@ -138,6 +157,18 @@ class MainWindow(QMainWindow):
         self.timeline = Timeline()
         self.timeline.seek_requested.connect(self.seek)
         self.timeline.clip_clicked.connect(self._select_clip)
+        self.timeline.view_changed.connect(self._on_timeline_view)
+        self.timeline_scroll = QScrollBar(Qt.Horizontal)
+        self.timeline_scroll.valueChanged.connect(lambda v: self.timeline.set_view_start(v / 10))
+        self.timeline_scroll.hide()
+        self.zoom_in_btn = QPushButton("+")
+        self.zoom_in_btn.setObjectName("zoomButton")
+        self.zoom_in_btn.setToolTip("Zoom in on the timeline (or scroll the mouse wheel over it)")
+        self.zoom_in_btn.clicked.connect(lambda: self.timeline.zoom(0.5))
+        self.zoom_out_btn = QPushButton("-")
+        self.zoom_out_btn.setObjectName("zoomButton")
+        self.zoom_out_btn.setToolTip("Zoom out (double-click the timeline to see the whole game)")
+        self.zoom_out_btn.clicked.connect(lambda: self.timeline.zoom(2.0))
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
@@ -150,8 +181,17 @@ class MainWindow(QMainWindow):
         video_row.addLayout(video_help)
         left_layout.addLayout(video_row, 1)
         left_layout.addLayout(controls)
+        timeline_col = QVBoxLayout()
+        timeline_col.setSpacing(0)
+        timeline_col.addWidget(self.timeline)
+        timeline_col.addWidget(self.timeline_scroll)
+        zoom_col = QVBoxLayout()
+        zoom_col.setSpacing(2)
+        zoom_col.addWidget(self.zoom_in_btn)
+        zoom_col.addWidget(self.zoom_out_btn)
         timeline_row = QHBoxLayout()
-        timeline_row.addWidget(self.timeline, 1)
+        timeline_row.addLayout(timeline_col, 1)
+        timeline_row.addLayout(zoom_col)
         timeline_row.addWidget(HelpButton(HELP["timeline"]))
         left_layout.addLayout(timeline_row)
 
@@ -252,6 +292,9 @@ class MainWindow(QMainWindow):
         self.long_summary.setWordWrap(True)
         self.long_summary.hide()
         right_layout.addWidget(self.long_summary)
+        self.limit_note = LimitNote()
+        self.limit_note.verified.connect(lambda: self.set_youtube_verified(True))
+        right_layout.addWidget(self.limit_note)
         right_layout.addWidget(self.nudge_box)
         self.preview_help = HelpButton(HELP["preview"])
         self.export_help = HelpButton(HELP["export"])
@@ -288,6 +331,7 @@ class MainWindow(QMainWindow):
         self.post_page = PostPage(self.library)
         self.post_page.open_folder.connect(lambda: self.settings_page.open_folder())
         self.post_page.change_folder.connect(lambda: self.settings_page.choose_folder())
+        self.post_page.verified.connect(lambda: self.set_youtube_verified(True))
         self.editor_page = container
         self.tabs.addTab(self.record_page, "Record")
         self.tabs.addTab(container, "Editor")
@@ -411,6 +455,8 @@ class MainWindow(QMainWindow):
             "step_forward": lambda: self.step(self.settings.step_seconds),
             "small_back": lambda: self.step(-SMALL_STEP_SECONDS),
             "small_forward": lambda: self.step(SMALL_STEP_SECONDS),
+            "next_moment": lambda: self.jump_moment(1),
+            "prev_moment": lambda: self.jump_moment(-1),
         }
         actions.update({f"speed_{n}": (lambda n=n: self.set_speed(n)) for n in SPEEDS})
         self.shortcuts = []
@@ -425,12 +471,30 @@ class MainWindow(QMainWindow):
         for n in SPEEDS:
             self.speed_group.button(n).setToolTip(f"Play at {n}x speed for skimming (key {s.key(f'speed_{n}')})")
         self.timeline.set_colors(s.clip_color_a, s.clip_color_b)
+        self._refresh_moments()
+        self.prev_moment_btn.setToolTip(f"Jump to the moment before ({s.key('prev_moment')})")
+        self.next_moment_btn.setToolTip(f"Jump to the next moment marked while recording ({s.key('next_moment')})")
+        self.post_page.youtube_verified = s.youtube_verified
+        self.post_page.refresh_limits()
         self.video.box_color = QColor(s.crop_color)
         self.video.viewport().update()
         self.guide.refresh(s)
         self.post_page.show_folder(save_folder(s))
         self.record_page.refresh(s)
+        self._refresh_long_summary()
         self._refresh_tips()
+
+    def set_youtube_verified(self, on: bool):
+        """The YouTube account can take videos over 15 minutes, so stop warning about it."""
+        self.settings.youtube_verified = on
+        try:
+            settings_mod.save(self.settings)
+        except OSError:
+            pass
+        self.settings_page.refresh_verified()
+        self.apply_settings(self.settings)
+        if on:
+            self.statusBar().showMessage("Got it: no more 15-minute warnings. (Settings > Posting changes it back.)")
 
     def _editor_key(self, handler):
         """Hotkeys only work on the Editor tab, so typing in Settings or reading the Guide is safe."""
@@ -462,7 +526,8 @@ class MainWindow(QMainWindow):
              f"Press {s.key('mark_start')} when something great starts and {s.key('mark_end')} when it ends. "
              "The video keeps playing, so you can mark clips without stopping."),
             (self.timeline, "4. Your clips on the timeline",
-             "Each clip shows up as a numbered bar. Click anywhere to jump there."),
+             "Each clip shows up as a numbered bar. Click anywhere to jump there. "
+             "Long game? Scroll the mouse wheel over the timeline to zoom in."),
             (self.clip_list, "5. Name and fine-tune clips",
              "Click a clip's name to rename it. The fine-tune buttons below move its start or end a tenth of a second at a time."),
             (self.video, "6. Pick what's in the phone video",
@@ -502,6 +567,9 @@ class MainWindow(QMainWindow):
         tips = []
         if clip.length > LONG_CLIP_SECONDS:
             tips.append(f"Clip {n} is {clip.length:.0f} seconds long. Most strong Shorts are under 45 seconds.")
+        if clip.length > SHORTS_MAX:
+            tips.append(f"Clip {n} is over 3 minutes, so YouTube will post it as a normal video, not a Short. "
+                        "TikTok takes it as it is.")
         if clip.crop is None:
             tips.append(f"Clip {n} has no crop box placed yet. Drag the box on the video over the part of the table to keep.")
         if not clip.name:
@@ -541,6 +609,7 @@ class MainWindow(QMainWindow):
         self.video.set_has_video(True)
         self.setWindowTitle(f"Lethal Cuts - {path.name}")
         self._refresh_clips()
+        self._refresh_moments()
         n, cuts = len(self.project.clips), len(self.project.cuts)
         saved = [f"{n} clip{'s' if n != 1 else ''}"] if n else []
         saved += [f"{cuts} cut{'s' if cuts != 1 else ''}"] if cuts else []
@@ -565,6 +634,51 @@ class MainWindow(QMainWindow):
         self.timeline.set_duration(ms / 1000)
         self._refresh_position()
         self._refresh_long_summary()
+
+    # --- moments marked while recording ---
+    def _refresh_moments(self):
+        moments = self.project.moments if self.project else []
+        self.timeline.set_moments(moments, self.settings.moment_minutes * 60)
+        self.moment_count.setText(f"{len(moments)} moment{'s' if len(moments) != 1 else ''}")
+        self.moment_box.setVisible(bool(moments))
+
+    def jump_moment(self, direction: int):
+        """Jumps to a few minutes before the next (or previous) press of the moment key."""
+        if not self.project:
+            return
+        moments = self.project.moments
+        if not moments:
+            self.statusBar().showMessage(f"No moments were marked in this video. While recording, press "
+                                         f"{self.settings.moment_key} when something great happens.")
+            return
+        window = self.settings.moment_minutes * 60
+        starts = [max(0.0, m - window) for m in moments]
+        pos = self.current_time()
+        if direction > 0:
+            index = next((i for i, s in enumerate(starts) if s > pos + 1), None)
+        else:
+            index = next((i for i in reversed(range(len(starts))) if starts[i] < pos - 1), None)
+        if index is None:
+            self.statusBar().showMessage("That was the last moment." if direction > 0 else "That was the first moment.")
+            return
+        self.stop_preview()
+        self.seek(starts[index])
+        self.statusBar().showMessage(
+            f"Moment {index + 1} of {len(moments)}: the {self.settings.moment_minutes:g} minutes before "
+            f"{self.settings.moment_key} was pressed (the gold flag). Mark the best part with "
+            f"{self.settings.key('mark_start')} and {self.settings.key('mark_end')}.")
+
+    def _on_timeline_view(self):
+        start, length = self.timeline.view()
+        zoomed = self.timeline.zoomed
+        self.timeline_scroll.blockSignals(True)
+        self.timeline_scroll.setVisible(zoomed)
+        if zoomed:
+            self.timeline_scroll.setRange(0, int((self.timeline.duration - length) * 10))
+            self.timeline_scroll.setPageStep(max(int(length * 10), 1))
+            self.timeline_scroll.setSingleStep(max(int(length), 1))
+            self.timeline_scroll.setValue(int(start * 10))
+        self.timeline_scroll.blockSignals(False)
 
     def _on_player_error(self, error, message):
         QMessageBox.warning(self, "Lethal Cuts", f"This video couldn't be played.\n\n{message}")
@@ -920,6 +1034,7 @@ class MainWindow(QMainWindow):
         self.cut_list.setVisible(long)
         self.long_note.setVisible(long)
         self.long_summary.setVisible(long)
+        self._refresh_long_summary()
         self.nudge_box.setTitle("Fine-tune the selected cut" if long else "Fine-tune the selected clip")
         self.delete_btn.setText("Delete cut" if long else "Delete clip")
         self.export_btn.setText("Export long video" if long else "Export all clips")
@@ -948,8 +1063,10 @@ class MainWindow(QMainWindow):
         duration = self.player.duration() / 1000
         if not self.project or duration <= 0:
             self.long_summary.setText("")
+            self.limit_note.hide()
             return
         kept = kept_length(self.project.cuts, duration)
+        self.limit_note.show_problems(long_video_problems(kept, self.settings.youtube_verified) if self.long_mode else [])
         self.long_summary.setText(f"Long video: {format_time(kept, tenths=False)}   "
                                   f"(cutting {format_time(duration - kept, tenths=False)} "
                                   f"of {format_time(duration, tenths=False)})")
@@ -1017,7 +1134,8 @@ class MainWindow(QMainWindow):
 
     def _update_enabled(self):
         has = self.project is not None
-        for w in [self.play_btn, self.mark_in_btn, self.mark_out_btn, *self.speed_group.buttons()]:
+        for w in [self.play_btn, self.mark_in_btn, self.mark_out_btn, self.zoom_in_btn, self.zoom_out_btn,
+                  *self.speed_group.buttons()]:
             w.setEnabled(has)
         self.export_btn.setEnabled(has and (self.long_mode or bool(self.project.clips)))
         index = self.active_list().selected_index()

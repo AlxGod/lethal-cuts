@@ -5,6 +5,7 @@ from __future__ import annotations
 import configparser
 import os
 import re
+import shutil
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
@@ -68,3 +69,15 @@ def is_inside_program(folder: Path) -> bool:
     except (OSError, ValueError):
         return False
     return a == b or a.startswith(b + os.sep)
+
+
+def free_space(folder: Path) -> int | None:
+    """Bytes free on the drive that holds this folder (it doesn't have to exist yet)."""
+    folder = Path(folder)
+    for candidate in (folder, *folder.parents):
+        if candidate.exists():
+            try:
+                return shutil.disk_usage(candidate).free
+            except OSError:
+                return None
+    return None

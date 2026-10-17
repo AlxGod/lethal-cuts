@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QFrame, QGraphicsScene, 
 
 from .help import HELP, HelpButton
 from .library import SITES, Library, Short, nice_date
+from .limits import VERIFY_TEXT, LimitNote, needs_verified_youtube, short_problems, too_long_for_tiktok
 from .project import format_time
 from .thumbnails import _Job, _Signals
 from .tools import ffmpeg_path
@@ -63,6 +64,7 @@ class _TallVideo(QGraphicsView):
 class PostPage(QWidget):
     open_folder = Signal()
     change_folder = Signal()
+    verified = Signal()  # the YouTube account can take videos over 15 minutes now
 
     def __init__(self, library: Library, parent=None):
         super().__init__(parent)
@@ -175,6 +177,9 @@ class PostPage(QWidget):
             row.addWidget(box)
             sites.addLayout(row)
             self.post_buttons[key], self.posted_boxes[key] = btn, box
+        self.youtube_verified = False
+        self.limit_note = LimitNote(stacked=False)
+        self.limit_note.verified.connect(self.verified.emit)
         self.note = QLabel()
         self.note.setObjectName("dimLabel")
         self.note.setWordWrap(True)
@@ -199,6 +204,7 @@ class PostPage(QWidget):
         side_layout.addWidget(self.detail)
         side_layout.addSpacing(6)
         side_layout.addLayout(sites)
+        side_layout.addWidget(self.limit_note)
         side_layout.addWidget(self.note)
         side_layout.addStretch(1)
         side_layout.addLayout(bottom)
@@ -301,6 +307,7 @@ class PostPage(QWidget):
                   *self.posted_boxes.values()):
             w.setEnabled(has)
         self.note.clear()
+        self.limit_note.hide()
         if not has:
             self.name_label.setText("No clip picked")
             self.detail.setText("Click a clip on the left to watch it here.")
@@ -317,7 +324,22 @@ class PostPage(QWidget):
             bits.append(f"exported {nice_date(short.exported)}")
         self.detail.setText("  •  ".join(bits))
         self._refresh_posted()
+        self.refresh_limits()
         self.player.setSource(QUrl.fromLocalFile(short.file))
+
+    def refresh_limits(self):
+        """Says when the picked video is too long for a site, and turns that site's button off."""
+        short = self.current
+        if short is None:
+            return
+        if short.kind == "long":  # (the TikTok button itself says when it's too long for TikTok)
+            problems = [VERIFY_TEXT] if needs_verified_youtube(short.length, self.youtube_verified) else []
+        else:
+            problems = short_problems(short.length)
+        self.limit_note.show_problems(problems)
+        tiktok_ok = not too_long_for_tiktok(short.length)
+        self.post_buttons["tiktok"].setEnabled(tiktok_ok)
+        self.post_buttons["tiktok"].setText("Post to TikTok" if tiktok_ok else "Too long for TikTok")
 
     def _refresh_posted(self):
         for key, box in self.posted_boxes.items():

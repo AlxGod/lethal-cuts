@@ -24,6 +24,12 @@ RECORDING = """
 <p><b>Playing on the computer (Tabletop Simulator)?</b> Use the <i>Record</i> tab: start the game, click <i>Start recording</i>,
 and click <i>Stop recording</i> when you're done. Lethal Cuts records with OBS (free; get it from obsproject.com) and opens the
 recording in the Editor. It records the game, your computer's sound (including Discord) and your microphone.</p>
+<p><b>Mark the great moments as they happen.</b> While recording, press the moment key (<b>F8</b>, or whichever you picked in
+Settings &gt; Recording) when something great happens, even with the game in front. Nothing pops up, so keep playing. The
+recording opens with a gold flag at each press, and <i>Moment &gt;</i> jumps to a few minutes before it, so you can find the best
+bits of a 3-hour game without watching all 3 hours.</p>
+<p><b>Leave room on the drive.</b> A recording takes several GB an hour. The Record tab shows how many hours fit and warns
+before you start if a long game won't. Recordings you've already made your videos from are safe to delete.</p>
 <p><b>Playing in person?</b> Record on a phone:</p>
 <ul>
 <li><b>Record in 4K at 30 fps.</b> The tall Shorts clip is cut out of the middle of the picture, so starting in 4K keeps it sharp.
@@ -31,7 +37,7 @@ On iPhone: Settings &gt; Camera &gt; Record Video &gt; 4K at 30 fps.</li>
 <li><b>Turn HDR Video off.</b> iPhone HDR often looks washed out after YouTube and TikTok process it. Lethal Cuts converts it,
 but recording without it looks best. On iPhone: Settings &gt; Camera &gt; Record Video &gt; HDR Video off.</li>
 <li><b>Keep the "High Efficiency" format on</b> (Settings &gt; Camera &gt; Formats). It keeps files about half the size.</li>
-<li><b>Clear space on the phone first.</b> A 2-hour game in 4K is about 20 GB.</li>
+<li><b>Clear space on the phone first.</b> 4K takes about 10 GB an hour, so a 3-hour game needs about 30 GB free.</li>
 <li><b>Plug the phone in</b> and turn on Do Not Disturb, so a dead battery or a phone call doesn't stop the recording.</li>
 <li><b>Mount the phone over the table</b>, looking down, so every player's cards are in the shot. Try not to bump it during the game:
 the crop box carries over from clip to clip because the camera usually stays put.</li>
@@ -44,7 +50,9 @@ STEPS = """
 <a name="steps"></a><h2>Making Shorts, step by step</h2>
 <ol>
 <li><b>Open the game video.</b> Click <i>Open video</i>, or drag the file onto the window. iPhone .mov files work as they are.</li>
-<li><b>Skim for good moments.</b> Use the 2x, 3x or 4x speed buttons, the arrow keys, or click anywhere on the timeline.</li>
+<li><b>Skim for good moments.</b> Use the 2x, 3x or 4x speed buttons, the arrow keys, or click anywhere on the timeline.
+Marked moments while recording? Press <span class="key">{next_moment}</span> to jump to each one. On a long game, scroll the mouse
+wheel over the timeline to zoom in.</li>
 <li><b>Mark a clip.</b> Press <span class="key">{mark_start}</span> where the moment starts and <span class="key">{mark_end}</span>
 where it ends. The video keeps playing while you mark. The clip appears as a numbered bar on the timeline and in the list.</li>
 <li><b>Name it.</b> Click the clip's name in the list (or press F2) and type something like "combo turn".</li>
@@ -74,13 +82,17 @@ a break) and <span class="key">{mark_end}</span> where it ends. It shows striped
 while to export; the window shows how long is left. The size (1080p or the recording's own size) is in Settings.</li>
 </ol>
 <p>Your Shorts clips and your cuts are kept separately, so you can make both from the same recording. Switch back with <i>Shorts</i>.</p>
+<p><b>How long can it be?</b> YouTube takes videos up to 15 minutes until the account has a verified phone number (free, once,
+at youtube.com/verify), then up to 12 hours. TikTok takes up to 60 minutes. Lethal Cuts tells you while you edit if the video is
+over a limit; once the YouTube account is verified, click <i>It's verified, stop telling me</i>.</p>
 """
 
 SHORTS = """
 <a name="shorts"></a><h2>Shorts tips</h2>
 <ul>
 <li><b>Hook them in the first 2 seconds.</b> Start right before the big moment, not at the start of the turn.</li>
-<li><b>Aim for 20 to 45 seconds.</b> Short clips get watched to the end and replayed, which helps them spread.</li>
+<li><b>Aim for 20 to 45 seconds.</b> Short clips get watched to the end and replayed, which helps them spread.
+Over 3 minutes, YouTube won't count it as a Short at all.</li>
 <li><b>Show the cards.</b> Place the crop box so viewers can see what was played.</li>
 <li><b>Catch the reactions.</b> The table's reaction is often the best part. Leave a second or two after the play.</li>
 <li><b>End on the payoff.</b> Stop right after the big moment lands. Don't let it trail off.</li>
