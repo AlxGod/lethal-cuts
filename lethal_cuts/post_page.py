@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QFile, QSize, QSizeF, Qt, QThreadPool, QTimer, QUrl
+from PySide6.QtCore import QFile, QSize, QSizeF, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QGuiApplication, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -61,6 +61,9 @@ class _TallVideo(QGraphicsView):
 
 
 class PostPage(QWidget):
+    open_folder = Signal()
+    change_folder = Signal()
+
     def __init__(self, library: Library, parent=None):
         super().__init__(parent)
         self.library = library
@@ -93,6 +96,19 @@ class PostPage(QWidget):
         top.addWidget(self.new_btn)
         top.addWidget(self.posted_btn)
         top.addStretch(1)
+        self.folder_label = QLabel()
+        self.folder_label.setObjectName("dimLabel")
+        self.folder_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        open_btn = QPushButton("Open folder")
+        open_btn.setToolTip("Open the folder your videos are saved in")
+        open_btn.clicked.connect(self.open_folder.emit)
+        change_btn = QPushButton("Change...")
+        change_btn.setToolTip("Save new videos somewhere else (videos already made stay where they are)")
+        change_btn.clicked.connect(self.change_folder.emit)
+        top.addWidget(self.folder_label)
+        top.addWidget(open_btn)
+        top.addWidget(change_btn)
+        top.addSpacing(8)
         top.addWidget(HelpButton(HELP["post"]))
 
         # The clip pictures, or a note when there are none
@@ -197,6 +213,9 @@ class PostPage(QWidget):
         layout.addLayout(body, 1)
         self._refresh_play_button()
         self.refresh()
+
+    def show_folder(self, folder: Path):
+        self.folder_label.setText(f"Saved in: {folder}")
 
     # --- the list ---
     def refresh(self):

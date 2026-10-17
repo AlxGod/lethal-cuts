@@ -46,7 +46,7 @@ class Settings:
     pad_before: float = 0.5   # extra seconds added before each clip's start mark
     pad_after: float = 0.5    # and after its end mark
     step_seconds: float = 5.0  # how far the arrow keys jump
-    export_folder: str = ""   # empty = a "<video name> Shorts" folder next to the video
+    save_folder: str = ""     # where all videos go; filled in on the first start (see folders.py)
     quality: str = "high"
     nudges: bool = True       # friendly tips while working
     clip_color_a: str = "#b0304a"

@@ -1,8 +1,10 @@
 """The Settings tab. Every change is saved right away."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QKeySequence
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox,
     QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import settings as settings_mod
+from .folders import is_inside_program, save_folder
 from .settings import ACTIONS, QUALITIES, Settings
 
 
@@ -31,6 +34,30 @@ class SettingsPage(QScrollArea):
         note = QLabel(f"Saved automatically in {settings_mod.settings_path()}")
         note.setObjectName("dimLabel")
         layout.addWidget(note)
+
+        # Where videos are saved
+        saving = QGroupBox("Your videos")
+        saving_layout = QVBoxLayout(saving)
+        folder_row = QHBoxLayout()
+        self.folder = QLineEdit()
+        self.folder.setReadOnly(True)
+        open_btn = QPushButton("Open")
+        open_btn.setToolTip("Open this folder in File Explorer")
+        open_btn.clicked.connect(self.open_folder)
+        browse = QPushButton("Change...")
+        browse.clicked.connect(self.choose_folder)
+        folder_row.addWidget(QLabel("Saved in:"))
+        folder_row.addWidget(self.folder, 1)
+        folder_row.addWidget(open_btn)
+        folder_row.addWidget(browse)
+        saving_layout.addLayout(folder_row)
+        folder_note = QLabel("Recordings, Shorts (a folder for each game) and long videos all go in here. "
+                             "Uninstalling or updating Lethal Cuts never deletes anything in this folder.")
+        folder_note.setObjectName("dimLabel")
+        folder_note.setWordWrap(True)
+        saving_layout.addWidget(folder_note)
+        layout.addWidget(saving)
+        self.refresh_folder()
 
         # Clips
         clips = QGroupBox("Clips")
@@ -55,19 +82,6 @@ class SettingsPage(QScrollArea):
             self.quality.addItem(label, key)
         self.quality.setCurrentIndex(list(QUALITIES).index(s.quality))
         form.addRow("Video quality:", self.quality)
-        folder_row = QHBoxLayout()
-        self.folder = QLineEdit(s.export_folder)
-        self.folder.setPlaceholderText('Next to the video, in a "<video name> Shorts" folder')
-        self.folder.setReadOnly(True)
-        browse = QPushButton("Choose...")
-        browse.clicked.connect(self._choose_folder)
-        clear = QPushButton("Next to video")
-        clear.setToolTip("Go back to saving clips in a folder next to each video")
-        clear.clicked.connect(lambda: (self.folder.setText(""), self._apply()))
-        folder_row.addWidget(self.folder, 1)
-        folder_row.addWidget(browse)
-        folder_row.addWidget(clear)
-        form.addRow("Save clips in:", folder_row)
         layout.addWidget(exp)
 
         # Tips
@@ -142,11 +156,29 @@ class SettingsPage(QScrollArea):
             self._paint_color_buttons()
             self._apply()
 
-    def _choose_folder(self):
-        path = QFileDialog.getExistingDirectory(self, "Save exported clips in", self.folder.text())
-        if path:
-            self.folder.setText(path)
-            self._apply()
+    def refresh_folder(self):
+        self.folder.setText(str(save_folder(self.s)))
+
+    def open_folder(self):
+        folder = save_folder(self.s)
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def choose_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Save your videos in", str(save_folder(self.s)))
+        if not path:
+            return
+        if is_inside_program(Path(path)):
+            QMessageBox.warning(self, "Pick another folder",
+                                "That folder holds the program's own files, which get replaced on every update. "
+                                "Pick a different folder for your videos.")
+            return
+        self.s.save_folder = path
+        self.refresh_folder()
+        self._apply()
 
     def _key_changed(self, action):
         edit = self.key_edits[action]
@@ -166,13 +198,12 @@ class SettingsPage(QScrollArea):
 
     def _reset(self):
         walkthrough = self.s.walkthrough_done
-        fresh = Settings(walkthrough_done=walkthrough)
+        fresh = Settings(walkthrough_done=walkthrough, save_folder=self.s.save_folder)  # never moves their videos
         self.s.__dict__.update(fresh.__dict__)
         self.pad_before.setValue(fresh.pad_before)
         self.pad_after.setValue(fresh.pad_after)
         self.step.setValue(fresh.step_seconds)
         self.quality.setCurrentIndex(list(QUALITIES).index(fresh.quality))
-        self.folder.setText("")
         self.nudges.setChecked(True)
         for action, edit in self.key_edits.items():
             edit.setKeySequence(QKeySequence(fresh.key(action)))
@@ -184,7 +215,6 @@ class SettingsPage(QScrollArea):
         self.s.pad_after = self.pad_after.value()
         self.s.step_seconds = self.step.value()
         self.s.quality = self.quality.currentData()
-        self.s.export_folder = self.folder.text()
         self.s.nudges = self.nudges.isChecked()
         try:
             settings_mod.save(self.s)

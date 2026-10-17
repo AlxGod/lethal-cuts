@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 from . import crop as cropmath
 from . import settings as settings_mod
 from .clip_list import ClipList
-from .export import default_export_folder
+from .folders import default_save_folder, save_folder, shorts_folder
 from .export_dialog import ExportDialog
 from .guide import GuidePage
 from .help import HELP, HelpButton, with_help
@@ -48,6 +48,12 @@ class MainWindow(QMainWindow):
     def __init__(self, s: Settings | None = None):
         super().__init__()
         self.settings = s or settings_mod.load()
+        if not self.settings.save_folder:  # first start: use the folder picked while installing
+            self.settings.save_folder = str(default_save_folder())
+            try:
+                settings_mod.save(self.settings)
+            except OSError:
+                pass
         self.setWindowTitle("Lethal Cuts")
         self.resize(1400, 860)
         self.setAcceptDrops(True)
@@ -227,6 +233,8 @@ class MainWindow(QMainWindow):
         self.settings_page.changed.connect(self.apply_settings)
         self.tabs = QTabWidget()
         self.post_page = PostPage(self.library)
+        self.post_page.open_folder.connect(lambda: self.settings_page.open_folder())
+        self.post_page.change_folder.connect(lambda: self.settings_page.choose_folder())
         self.tabs.addTab(container, "Editor")
         self.tabs.addTab(self.post_page, "Post")
         self.tabs.addTab(self.guide, "Guide")
@@ -301,6 +309,7 @@ class MainWindow(QMainWindow):
         self.video.box_color = QColor(s.crop_color)
         self.video.viewport().update()
         self.guide.refresh(s)
+        self.post_page.show_folder(save_folder(s))
         self._refresh_tips()
 
     def _editor_key(self, handler):
@@ -591,9 +600,7 @@ class MainWindow(QMainWindow):
     def export_folder(self) -> Path | None:
         if not self.project:
             return None
-        if self.settings.export_folder:
-            return Path(self.settings.export_folder)
-        return default_export_folder(self.project.video_path)
+        return shorts_folder(self.settings, self.project.video_path)
 
     def export_all(self):
         if not self.project:

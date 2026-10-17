@@ -175,10 +175,6 @@ def output_name(number: int, clip: Clip) -> str:
     return f"{number:02d} {name[:60]}.mp4"
 
 
-def default_export_folder(video: Path) -> Path:
-    return video.parent / f"{video.stem} Shorts"
-
-
 def run_encode(args: list[str], length: float, on_progress, register_process) -> tuple[int, str]:
     """Runs FFmpeg, reporting progress (0 to 1) as it goes. Returns exit code and the end of its log."""
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
