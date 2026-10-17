@@ -74,6 +74,7 @@ def run_check(log_path: Path, quiet: bool) -> int:
         size = sink.videoSize()
         report(not size.isEmpty(), f"Played the video in the built-in player ({size.width()}x{size.height()})")
         player.stop()
+        player.setSource(QUrl())  # lets go of the file, or Windows won't let the test folder be deleted
 
         # A real 1-second export
         gpu = export.gpu_encoder_works()
