@@ -4,10 +4,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import QApplication
 
 from .main_window import MainWindow
+from .tools import app_dir
 
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 10pt; }
@@ -67,7 +68,14 @@ def apply_theme(app: QApplication) -> None:
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Lethal Cuts")
+    icon = app_dir() / ("icon.ico" if getattr(sys, "frozen", False) else "assets/icon.ico")
+    if icon.exists():
+        app.setWindowIcon(QIcon(str(icon)))
     apply_theme(app)
+    if "--check" in sys.argv:
+        from .selfcheck import default_log, run_check
+        args = [a for a in sys.argv[1:] if not a.startswith("--")]
+        return run_check(Path(args[0]) if args else default_log(), quiet="--quiet" in sys.argv)
     window = MainWindow()
     window.show()
     if len(sys.argv) > 1 and Path(sys.argv[1]).is_file():
