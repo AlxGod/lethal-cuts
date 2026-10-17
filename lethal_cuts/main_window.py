@@ -4,18 +4,20 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
-    QButtonGroup, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QButtonGroup, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
     QMessageBox, QPushButton, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import crop as cropmath
+from . import updater
 from . import settings as settings_mod
 from .clip_list import ClipList
 from .folders import default_save_folder, save_folder, shorts_folder
+from . import __version__
 from .export_dialog import ExportDialog
 from .guide import GuidePage
 from .help import HELP, HelpButton, with_help
@@ -240,7 +242,29 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.guide, "Guide")
         self.tabs.addTab(self.settings_page, "Settings")
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        self.setCentralWidget(self.tabs)
+        # The bar that appears when a newer version is out
+        self.update_bar = QFrame()
+        self.update_bar.setObjectName("updateBar")
+        self.update_label = QLabel()
+        self.update_now_btn = QPushButton("Update now")
+        self.update_now_btn.setObjectName("exportButton")
+        self.update_now_btn.clicked.connect(self.start_update)
+        later = QPushButton("Not now")
+        later.clicked.connect(self.update_bar.hide)
+        bar = QHBoxLayout(self.update_bar)
+        bar.setContentsMargins(14, 6, 14, 6)
+        bar.addWidget(self.update_label, 1)
+        bar.addWidget(self.update_now_btn)
+        bar.addWidget(later)
+        self.update_bar.hide()
+        self.available_update: updater.Update | None = None
+        central = QWidget()
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self.update_bar)
+        central_layout.addWidget(self.tabs, 1)
+        self.setCentralWidget(central)
 
         # Menu and keys
         file_menu = self.menuBar().addMenu("&File")
@@ -253,6 +277,8 @@ class MainWindow(QMainWindow):
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(QAction("&Guide", self, triggered=lambda: self.tabs.setCurrentWidget(self.guide)))
         help_menu.addAction(QAction("&Replay the walkthrough", self, triggered=self.start_walkthrough))
+        help_menu.addAction(QAction("&Check for updates", self, triggered=lambda: self.check_for_updates(manual=True)))
+        help_menu.addAction(QAction(f"Version {__version__}", self, enabled=False))
         self.shortcuts: list[QShortcut] = []
         self.walkthrough: Walkthrough | None = None
 
@@ -270,6 +296,48 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Open a game video to start.")
         if not self.settings.walkthrough_done:
             QTimer.singleShot(600, self.start_walkthrough)
+        if updater.should_check():
+            updater.clean_old_download()
+            QTimer.singleShot(1500, self.check_for_updates)
+
+    # --- updates ---
+    def check_for_updates(self, manual: bool = False):
+        """Asks GitHub once whether a newer version is out (in the background)."""
+        if getattr(self, "_update_thread", None) and self._update_thread.isRunning():
+            return
+        self._checker = updater.Checker()
+        self._update_thread = QThread(self)
+        self._checker.moveToThread(self._update_thread)
+        self._update_thread.started.connect(self._checker.run)
+        self._checker.found.connect(lambda update: self._on_update_found(update, manual))
+        self._checker.failed.connect(lambda error: self._on_update_failed(error, manual))
+        self._checker.found.connect(self._update_thread.quit)
+        self._checker.failed.connect(self._update_thread.quit)
+        self._update_thread.start()
+
+    def _on_update_found(self, update, manual: bool):
+        self.available_update = update
+        if update:
+            self.update_label.setText(f"Lethal Cuts {update.version} is out (you have {__version__}). "
+                                      "Updating takes about a minute and keeps your settings and clips.")
+            self.update_bar.show()
+        elif manual:
+            QMessageBox.information(self, "Lethal Cuts", f"You have the newest version ({__version__}).")
+
+    def _on_update_failed(self, error: str, manual: bool):
+        if manual:
+            QMessageBox.warning(self, "Lethal Cuts", f"Couldn't check for updates right now:\n{error}\n\n"
+                                                     "Check the internet connection and try again later.")
+
+    def start_update(self):
+        if not self.available_update:
+            return
+        self.save_now()
+        dialog = updater.UpdateDialog(self.available_update, self)
+        if dialog.exec() and dialog.installer:
+            updater.run_installer(dialog.installer)
+            self.close()
+            QApplication.quit()
 
     # --- settings ---
     def apply_settings(self, s: Settings):
