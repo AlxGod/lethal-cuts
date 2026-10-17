@@ -1,0 +1,24 @@
+# Built program and installer
+dist/
+build/
+*.exe
+*.zip
+
+# Python leftovers and virtual environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Bundled tools (downloaded, rebuildable)
+vendor/
+
+# Video and media (test footage, exports)
+*.mov
+*.mp4
+*.mkv
+*.wav
+
+# The program's own project and settings files
+*.lcproj
+settings.json
