@@ -13,7 +13,7 @@ play on the computer, like Tabletop Simulator.
 
 INSTALLING
 ----------
-1. Double-click "Lethal Cuts Setup 0.3.0.exe".
+1. Double-click "Lethal Cuts Setup 0.4.0.exe".
 2. Windows will probably show a blue box: "Windows protected your PC".
    That's normal for programs made by a person rather than a big company.
    Click "More info", then "Run anyway".
@@ -22,6 +22,7 @@ INSTALLING
 4. Choose where to save your videos. Recordings, Shorts and long videos all go
    in that one folder (you can change it later in Settings). Uninstalling or
    updating never deletes anything in it, even if you pick the install folder.
+   Pick a drive with lots of room: a 3-hour game is about 20-30 GB.
 5. Click through the rest. It puts a Lethal Cuts shortcut on your desktop.
 
 The install folder has two shortcuts: "Lethal Cuts" to open it, and
@@ -39,13 +40,19 @@ On the computer (Tabletop Simulator):
 - Start Tabletop Simulator, then in Lethal Cuts' Record tab click
   "Start recording". It records the game, your computer's sound (including
   everyone on Discord) and your microphone.
+- Something great just happened? Press F8, even with the game in front
+  (nothing pops up, so keep playing). Each press marks the 5 minutes before it.
+  The key and the minutes can be changed in Settings > Recording.
 - Click "Stop recording" when the game is over. The recording opens in the
-  Editor by itself.
+  Editor by itself, with a gold flag at each F8 press.
+- The Record tab shows how many hours of recording fit on the drive, and warns
+  before you start if a long game won't. Once you've made your videos from a
+  recording, it's safe to delete it to free up space.
 
 In person, on an iPhone:
 - Settings > Camera > Record Video > 4K at 30 fps.
 - In the same menu, turn HDR Video OFF (HDR looks washed out after YouTube/TikTok).
-- Clear space first: a 2-hour game is about 20 GB.
+- Clear space first: 4K is about 10 GB an hour, so a 3-hour game needs 30 GB.
 - Plug the phone in and turn on Do Not Disturb.
 - Mount the phone over the table, looking down, and try not to bump it.
 Copy the video to your PC (the .mov file works as it is, no converting) and
@@ -55,7 +62,9 @@ open it in the Editor.
 MAKING SHORTS
 -------------
 1. Open the video in the Editor (Open video button, or drag the file onto the window).
-2. Skim with the 2x / 3x / 4x buttons or the arrow keys.
+2. Skim with the 2x / 3x / 4x buttons or the arrow keys. Marked moments with F8?
+   Press N to jump to a few minutes before each one. On a long game, scroll the
+   mouse wheel over the timeline to zoom in (double-click it to zoom back out).
 3. Press I when a great moment starts and O when it ends. The video keeps playing.
 4. Click a clip's name in the list to name it (the name becomes the file name).
 5. Drag the tall box on the video over the cards and players. Press P to preview
@@ -73,6 +82,15 @@ MAKING A LONG VIDEO
 4. Click "Export long video". It's saved in your videos folder under Long videos.
 Your Shorts clips and your cuts are kept separately, so you can make both from
 the same recording.
+
+How long can a video be?
+- YouTube Shorts: up to 3 minutes.
+- YouTube videos: up to 15 minutes, until the account verifies a phone number
+  (free, once, at youtube.com/verify). Then up to 12 hours.
+- TikTok: up to 60 minutes.
+Lethal Cuts tells you while you edit when a video is over a limit. Once the
+YouTube account is verified, click "It's verified, stop telling me" (Settings >
+Posting turns the reminder back on).
 
 
 POSTING
