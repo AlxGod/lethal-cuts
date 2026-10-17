@@ -30,6 +30,7 @@ class Timeline(QWidget):
         self.clips: list[Clip] = []
         self.selected = -1
         self.pending_start: float | None = None
+        self.clip_colors = list(CLIP_COLORS)
         self._dragging = False
 
     # --- state from the main window ---
@@ -44,6 +45,10 @@ class Timeline(QWidget):
     def set_clips(self, clips: list[Clip], selected: int = -1) -> None:
         self.clips = clips
         self.selected = selected
+        self.update()
+
+    def set_colors(self, a: str, b: str) -> None:
+        self.clip_colors = [QColor(a), QColor(b)]
         self.update()
 
     def set_pending_start(self, seconds: float | None) -> None:
@@ -93,7 +98,7 @@ class Timeline(QWidget):
         for i, clip in enumerate(self.clips):
             x1, x2 = self._x(clip.start), self._x(clip.end)
             rect = QRectF(x1, track.top(), max(x2 - x1, 3), track.height())
-            color = SELECTED_COLOR if i == self.selected else CLIP_COLORS[i % 2]
+            color = SELECTED_COLOR if i == self.selected else self.clip_colors[i % 2]
             fill = QColor(color)
             fill.setAlpha(170)
             p.setPen(QPen(color, 1))

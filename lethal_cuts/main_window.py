@@ -5,29 +5,35 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QImage, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QButtonGroup, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
-    QMessageBox, QPushButton, QSplitter, QStyle, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import crop as cropmath
+from . import settings as settings_mod
 from .clip_list import ClipList
 from .export import default_export_folder
 from .export_dialog import ExportDialog, open_upload_pages
+from .guide import GuidePage
+from .help import HELP, HelpButton, with_help
+from .settings import QUALITIES, Settings
+from .settings_page import SettingsPage
 from .project import Clip, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
 from .timeline import Timeline
 from .video_view import VideoView
+from .walkthrough import Walkthrough
 
 VIDEO_FILTER = "Videos (*.mov *.mp4 *.m4v *.mkv);;All files (*.*)"
 VIDEO_SUFFIXES = {".mov", ".mp4", ".m4v", ".mkv"}
 MIN_CLIP_SECONDS = 0.5
-STEP_SECONDS = 5.0        # arrow keys
-SMALL_STEP_SECONDS = 1.0  # Shift + arrow keys
+SMALL_STEP_SECONDS = 1.0  # Shift + arrow keys (the normal jump is in Settings)
 NUDGE_SECONDS = 0.1       # fine-tune buttons
 SPEEDS = [1, 2, 3, 4]
+LONG_CLIP_SECONDS = 60    # past this, a tip says most strong Shorts are shorter
 
 
 def _precise(seconds: float) -> str:
@@ -37,8 +43,9 @@ def _precise(seconds: float) -> str:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, s: Settings | None = None):
         super().__init__()
+        self.settings = s or settings_mod.load()
         self.setWindowTitle("Lethal Cuts")
         self.resize(1400, 860)
         self.setAcceptDrops(True)
@@ -91,25 +98,26 @@ class MainWindow(QMainWindow):
         self.speed_group.button(1).setChecked(True)
         self.speed_group.idClicked.connect(self.set_speed)
 
-        self.mark_in_btn = QPushButton("Mark start  (I)")
+        self.mark_in_btn = QPushButton()
         self.mark_in_btn.setObjectName("markIn")
         self.mark_in_btn.setToolTip("Mark where a clip starts. The video keeps playing.")
         self.mark_in_btn.clicked.connect(self.mark_start)
-        self.mark_out_btn = QPushButton("Mark end  (O)")
+        self.mark_out_btn = QPushButton()
         self.mark_out_btn.setObjectName("markOut")
         self.mark_out_btn.setToolTip("Mark where the clip ends. This saves the clip.")
         self.mark_out_btn.clicked.connect(self.mark_end)
 
+        speed_box.addWidget(HelpButton(HELP["speed"]))
         controls = QHBoxLayout()
-        controls.addWidget(self.open_btn)
+        controls.addLayout(with_help(self.open_btn, "open"))
         controls.addSpacing(12)
-        controls.addWidget(self.play_btn)
+        controls.addLayout(with_help(self.play_btn, "play"))
         controls.addWidget(self.time_label)
         controls.addSpacing(12)
         controls.addLayout(speed_box)
         controls.addStretch(1)
         controls.addWidget(self.mark_in_btn)
-        controls.addWidget(self.mark_out_btn)
+        controls.addLayout(with_help(self.mark_out_btn, "mark"))
 
         self.timeline = Timeline()
         self.timeline.seek_requested.connect(self.seek)
@@ -118,9 +126,18 @@ class MainWindow(QMainWindow):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(self.video, 1)
+        video_row = QHBoxLayout()
+        video_row.addWidget(self.video, 1)
+        video_help = QVBoxLayout()
+        video_help.addWidget(HelpButton(HELP["crop"]))
+        video_help.addStretch(1)
+        video_row.addLayout(video_help)
+        left_layout.addLayout(video_row, 1)
         left_layout.addLayout(controls)
-        left_layout.addWidget(self.timeline)
+        timeline_row = QHBoxLayout()
+        timeline_row.addWidget(self.timeline, 1)
+        timeline_row.addWidget(HelpButton(HELP["timeline"]))
+        left_layout.addLayout(timeline_row)
 
         # Clip list
         self.clip_list = ClipList()
@@ -130,7 +147,7 @@ class MainWindow(QMainWindow):
         self.delete_btn = QPushButton("Delete clip")
         self.delete_btn.setToolTip("Delete the selected clip (Delete key). Ctrl+Z brings it back.")
         self.delete_btn.clicked.connect(self.delete_selected)
-        self.preview_btn = QPushButton("Preview vertical  (P)")
+        self.preview_btn = QPushButton()
         self.preview_btn.setObjectName("previewButton")
         self.preview_btn.setCheckable(True)
         self.preview_btn.setToolTip("Play the selected clip exactly as the tall phone video will look")
@@ -160,6 +177,7 @@ class MainWindow(QMainWindow):
                 btn.clicked.connect(lambda _=False, e=edge, d=delta: self.nudge(e, d))
                 grid.addWidget(btn, row, col)
                 self.nudge_buttons.append(btn)
+        grid.addWidget(HelpButton(HELP["nudge"]), 0, 4)
         grid.setColumnStretch(1, 1)
 
         right = QWidget()
@@ -167,17 +185,27 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(0, 0, 0, 0)
         clips_title = QLabel("Clips")
         clips_title.setObjectName("panelTitle")
-        right_layout.addWidget(clips_title)
+        title_row = QHBoxLayout()
+        title_row.addWidget(clips_title)
+        title_row.addStretch(1)
+        title_row.addWidget(HelpButton(HELP["clips"]))
+        right_layout.addLayout(title_row)
+        # Friendly tips about the picked clip (can be turned off in Settings)
+        self.tip_label = QLabel()
+        self.tip_label.setObjectName("tipLabel")
+        self.tip_label.setWordWrap(True)
+        self.tip_label.hide()
+        right_layout.addWidget(self.tip_label)
         right_layout.addWidget(self.clip_list, 1)
         right_layout.addWidget(self.nudge_box)
         clip_buttons = QHBoxLayout()
-        clip_buttons.addWidget(self.preview_btn, 1)
-        clip_buttons.addWidget(self.delete_btn)
+        clip_buttons.addLayout(with_help(self.preview_btn, "preview", stretch=True), 1)
+        clip_buttons.addLayout(with_help(self.delete_btn, "delete"))
         right_layout.addLayout(clip_buttons)
         right_layout.addSpacing(6)
         export_buttons = QHBoxLayout()
-        export_buttons.addWidget(self.export_btn, 1)
-        export_buttons.addWidget(self.upload_btn)
+        export_buttons.addLayout(with_help(self.export_btn, "export", stretch=True), 1)
+        export_buttons.addLayout(with_help(self.upload_btn, "upload"))
         right_layout.addLayout(export_buttons)
 
         splitter = QSplitter(Qt.Horizontal)
@@ -189,31 +217,31 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(container)
         outer.setContentsMargins(10, 10, 10, 6)
         outer.addWidget(splitter)
-        self.setCentralWidget(container)
+
+        self.guide = GuidePage(self.settings)
+        self.guide.replay_walkthrough.connect(self.start_walkthrough)
+        self.settings_page = SettingsPage(self.settings)
+        self.settings_page.changed.connect(self.apply_settings)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(container, "Editor")
+        self.tabs.addTab(self.guide, "Guide")
+        self.tabs.addTab(self.settings_page, "Settings")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        self.setCentralWidget(self.tabs)
 
         # Menu and keys
         file_menu = self.menuBar().addMenu("&File")
-        open_action = QAction("&Open video...", self, shortcut=QKeySequence.Open, triggered=self.choose_video)
-        file_menu.addAction(open_action)
-        file_menu.addAction(QAction("&Export all clips", self, shortcut="Ctrl+E", triggered=self.export_all))
+        self.open_action = QAction("&Open video...", self, triggered=self.choose_video)
+        file_menu.addAction(self.open_action)
+        self.export_action = QAction("&Export all clips", self, triggered=self.export_all)
+        file_menu.addAction(self.export_action)
         file_menu.addSeparator()
         file_menu.addAction(QAction("E&xit", self, triggered=self.close))
-        keys = [
-            ("Space", self.toggle_play),
-            ("I", self.mark_start),
-            ("O", self.mark_end),
-            ("Escape", self.escape),
-            ("P", self.toggle_preview),
-            ("Delete", self.delete_selected),
-            ("Ctrl+Z", self.undo_delete),
-            ("Left", lambda: self.step(-STEP_SECONDS)),
-            ("Right", lambda: self.step(STEP_SECONDS)),
-            ("Shift+Left", lambda: self.step(-SMALL_STEP_SECONDS)),
-            ("Shift+Right", lambda: self.step(SMALL_STEP_SECONDS)),
-        ]
-        keys += [(str(s), lambda s=s: self.set_speed(s)) for s in SPEEDS]
-        for key, handler in keys:
-            QShortcut(QKeySequence(key), self, activated=handler)
+        help_menu = self.menuBar().addMenu("&Help")
+        help_menu.addAction(QAction("&Guide", self, triggered=lambda: self.tabs.setCurrentWidget(self.guide)))
+        help_menu.addAction(QAction("&Replay the walkthrough", self, triggered=self.start_walkthrough))
+        self.shortcuts: list[QShortcut] = []
+        self.walkthrough: Walkthrough | None = None
 
         # A quick timer keeps the playhead moving smoothly while playing.
         self.tick = QTimer(self, interval=40, timeout=self._refresh_position)
@@ -223,9 +251,127 @@ class MainWindow(QMainWindow):
         # Preview pictures are made once clips stop changing (e.g. after a held nudge button).
         self.thumb_timer = QTimer(self, singleShot=True, interval=400, timeout=self._request_thumbnails)
 
+        self.apply_settings(self.settings)
         self._refresh_play_button()
         self._update_enabled()
         self.statusBar().showMessage("Open a game video to start.")
+        if not self.settings.walkthrough_done:
+            QTimer.singleShot(600, self.start_walkthrough)
+
+    # --- settings ---
+    def apply_settings(self, s: Settings):
+        """Puts Settings into effect: hotkeys, button labels, colors, the Guide and tips."""
+        self.settings = s
+        for sc in self.shortcuts:
+            sc.setEnabled(False)
+            sc.deleteLater()
+        actions = {
+            "play_pause": self.toggle_play,
+            "mark_start": self.mark_start,
+            "mark_end": self.mark_end,
+            "cancel": self.escape,
+            "preview": self.toggle_preview,
+            "delete": self.delete_selected,
+            "undo": self.undo_delete,
+            "step_back": lambda: self.step(-self.settings.step_seconds),
+            "step_forward": lambda: self.step(self.settings.step_seconds),
+            "small_back": lambda: self.step(-SMALL_STEP_SECONDS),
+            "small_forward": lambda: self.step(SMALL_STEP_SECONDS),
+        }
+        actions.update({f"speed_{n}": (lambda n=n: self.set_speed(n)) for n in SPEEDS})
+        self.shortcuts = []
+        for action, handler in actions.items():
+            sc = QShortcut(QKeySequence(s.key(action)), self)
+            sc.activated.connect(lambda h=handler: self._editor_key(h))
+            self.shortcuts.append(sc)
+        self.open_action.setShortcut(QKeySequence(s.key("open")))
+        self.export_action.setShortcut(QKeySequence(s.key("export")))
+        self.mark_in_btn.setText(f"Mark start  ({s.key('mark_start')})")
+        self.mark_out_btn.setText(f"Mark end  ({s.key('mark_end')})")
+        self.preview_btn.setText(f"Preview vertical  ({s.key('preview')})")
+        self.play_btn.setToolTip(f"Play or pause ({s.key('play_pause')})")
+        for n in SPEEDS:
+            self.speed_group.button(n).setToolTip(f"Play at {n}x speed for skimming (key {s.key(f'speed_{n}')})")
+        self.timeline.set_colors(s.clip_color_a, s.clip_color_b)
+        self.video.box_color = QColor(s.crop_color)
+        self.video.viewport().update()
+        self.guide.refresh(s)
+        self._refresh_tips()
+
+    def _editor_key(self, handler):
+        """Hotkeys only work on the Editor tab, so typing in Settings or reading the Guide is safe."""
+        if self.tabs.currentIndex() == 0 and not (self.walkthrough and self.walkthrough.active):
+            handler()
+
+    def _on_tab_changed(self, index: int):
+        if index != 0:
+            self.player.pause()
+
+    # --- first-time walkthrough ---
+    def start_walkthrough(self):
+        self.tabs.setCurrentIndex(0)
+        s = self.settings
+        steps = [
+            (None, "Welcome to Lethal Cuts",
+             "This turns a long game recording into short vertical clips for YouTube Shorts and TikTok. "
+             "Here's a quick look around. It takes about a minute."),
+            (self.open_btn, "1. Open a game video",
+             "Click Open video, or drag the file onto the window. iPhone videos work as they are."),
+            (self.speed_group.button(4), "2. Skim through the game",
+             f"Play at 2x, 3x or 4x speed to get through a long game fast. The arrow keys jump {s.step_seconds:g} seconds."),
+            (self.mark_out_btn, "3. Mark the good moments",
+             f"Press {s.key('mark_start')} when something great starts and {s.key('mark_end')} when it ends. "
+             "The video keeps playing, so you can mark clips without stopping."),
+            (self.timeline, "4. Your clips on the timeline",
+             "Each clip shows up as a numbered bar. Click anywhere to jump there."),
+            (self.clip_list, "5. Name and fine-tune clips",
+             "Click a clip's name to rename it. The fine-tune buttons below move its start or end a tenth of a second at a time."),
+            (self.video, "6. Pick what's in the phone video",
+             "With a clip picked, a tall box appears on the video. Drag it over the cards and players. "
+             f"Press {s.key('preview')} to see exactly how the phone video will look."),
+            (self.export_btn, "7. Export and upload",
+             "Export all clips makes each one a ready-to-post vertical video with the volume evened out. "
+             "Upload opens YouTube and TikTok so you can drag them in."),
+            (self.tabs.tabBar(), "Need help later?",
+             'The Guide tab has recording tips, the hotkey list and tips for strong Shorts. Every "?" button explains '
+             "the control next to it."),
+        ]
+        if self.walkthrough:
+            self.walkthrough.finish()
+            self.walkthrough.deleteLater()
+        self.walkthrough = Walkthrough(self, steps)
+        self.walkthrough.finished.connect(self._walkthrough_done)
+        self.walkthrough.start()
+
+    def _walkthrough_done(self):
+        if not self.settings.walkthrough_done:
+            self.settings.walkthrough_done = True
+            try:
+                settings_mod.save(self.settings)
+            except OSError:
+                pass
+
+    # --- friendly tips ---
+    def _clip_tips(self, index: int) -> list[str]:
+        clip = self.project.clips[index]
+        n = index + 1
+        tips = []
+        if clip.length > LONG_CLIP_SECONDS:
+            tips.append(f"Clip {n} is {clip.length:.0f} seconds long. Most strong Shorts are under 45 seconds.")
+        if clip.crop is None:
+            tips.append(f"Clip {n} has no crop box placed yet. Drag the box on the video over the part of the table to keep.")
+        if not clip.name:
+            tips.append(f"Clip {n} doesn't have a name yet. Click its name in the list to add one. It becomes the file name.")
+        return tips
+
+    def _refresh_tips(self):
+        index = self.clip_list.selected_index()
+        if not self.settings.nudges or not self.project or index < 0:
+            self.tip_label.hide()
+            return
+        tips = self._clip_tips(index)
+        self.tip_label.setText("\n".join(tips))
+        self.tip_label.setVisible(bool(tips))
 
     # --- opening videos ---
     def choose_video(self):
@@ -337,8 +483,13 @@ class MainWindow(QMainWindow):
             return
         start, end = self.pending_start, self.current_time()
         if end - start < MIN_CLIP_SECONDS:
-            self.statusBar().showMessage("That clip is too short. Let the video play past the start mark, then press O.")
+            self.statusBar().showMessage(
+                f"That clip is too short. Let the video play past the start mark, then press {self.settings.key('mark_end')}.")
             return
+        # Extra lead-in and lead-out from Settings, since it's easy to press a key a little late.
+        duration = self.player.duration() / 1000 or end + self.settings.pad_after
+        start = max(0.0, start - self.settings.pad_before)
+        end = min(duration, end + self.settings.pad_after)
         overlaps = self.project.overlapping(start, end)
         if overlaps and not self._confirm_overlap(overlaps):
             self.statusBar().showMessage("Clip not saved. Your start mark is still set: press O again, or Esc to cancel.")
@@ -350,7 +501,10 @@ class MainWindow(QMainWindow):
         self.timeline.set_pending_start(None)
         self._refresh_clips(select=index)
         self._changed()
-        self.statusBar().showMessage(f"Clip {index + 1} saved ({clip.length:.1f} seconds). Click its name in the list to rename it.")
+        message = f"Clip {index + 1} saved ({clip.length:.1f} seconds). Click its name in the list to rename it."
+        if self.settings.nudges and clip.length > LONG_CLIP_SECONDS:
+            message = f"Clip {index + 1} saved. It's {clip.length:.0f} seconds long: most strong Shorts are under 45 seconds."
+        self.statusBar().showMessage(message)
 
     def _confirm_overlap(self, overlaps: list[int]) -> bool:
         lines = [
@@ -395,6 +549,7 @@ class MainWindow(QMainWindow):
         self.project.clips[index].crop = crop
         self.project.last_crop = replace(crop)
         self._changed()
+        self._refresh_tips()
 
     def toggle_preview(self):
         if self.preview_clip:
@@ -423,7 +578,11 @@ class MainWindow(QMainWindow):
 
     # --- export and upload ---
     def export_folder(self) -> Path | None:
-        return default_export_folder(self.project.video_path) if self.project else None
+        if not self.project:
+            return None
+        if self.settings.export_folder:
+            return Path(self.settings.export_folder)
+        return default_export_folder(self.project.video_path)
 
     def export_all(self):
         if not self.project:
@@ -434,11 +593,28 @@ class MainWindow(QMainWindow):
             return
         self.stop_preview()
         self.player.pause()
+        if self.settings.nudges and not self._confirm_export_tips():
+            return
         self.save_now()
-        dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self)
+        _, crf, cq = QUALITIES[self.settings.quality]
+        dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self, crf=crf, cq=cq)
         dialog.exec()
         if dialog.files and not dialog.error and not dialog.cancelled:
             self.statusBar().showMessage(f"{len(dialog.files)} clips exported to {self.export_folder()}.")
+
+    def _confirm_export_tips(self) -> bool:
+        tips = [t for i in range(len(self.project.clips)) for t in self._clip_tips(i)]
+        if not tips:
+            return True
+        shown = tips[:8] + ([f"...and {len(tips) - 8} more."] if len(tips) > 8 else [])
+        box = QMessageBox(self)
+        box.setWindowTitle("Before you export")
+        box.setText("A few things you might want to fix first:")
+        box.setInformativeText("\n\n".join(shown))
+        export_btn = box.addButton("Export anyway", QMessageBox.AcceptRole)
+        box.addButton("Go back", QMessageBox.RejectRole)
+        box.exec()
+        return box.clickedButton() is export_btn
 
     def upload(self):
         folder = self.export_folder()
@@ -509,6 +685,7 @@ class MainWindow(QMainWindow):
         if self.project and 0 <= index < len(self.project.clips):
             self.project.clips[index].name = name
             self._changed()
+            self._refresh_tips()
 
     def delete_selected(self):
         index = self.clip_list.selected_index()
@@ -548,6 +725,7 @@ class MainWindow(QMainWindow):
         else:
             self.start_value.setText("-")
             self.end_value.setText("-")
+        self._refresh_tips()
 
     # --- saving ---
     def _changed(self):

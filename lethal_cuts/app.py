@@ -26,6 +26,14 @@ QPushButton#exportButton:hover { background: #8d60dc; }
 QPushButton#exportButton:disabled { background: #2c2440; border-color: #3d3358; }
 QProgressBar { background: #2a2338; border: none; border-radius: 5px; height: 14px; text-align: center; }
 QProgressBar::chunk { background: #b0304a; border-radius: 5px; }
+QToolButton#helpButton { color: #c9a6ff; font-weight: bold; border: 1px solid #3d3358; border-radius: 9px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; }
+QToolButton#helpButton:hover { background: #3a2f55; }
+QLabel#tipLabel { background: #3a2f18; color: #f6dc9a; border: 1px solid #6a5420; border-radius: 6px; padding: 6px 8px; }
+QFrame#walkCard { background: #241d33; border: 2px solid #f0b840; border-radius: 10px; }
+QTabWidget::pane { border: none; }
+QTabBar::tab { background: #1f192b; padding: 7px 18px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }
+QTabBar::tab:selected { background: #2c2440; color: #f0b840; }
+QTextBrowser { background: #1a1524; border: 1px solid #2a2338; border-radius: 6px; padding: 8px; }
 QLabel#dimLabel { color: #8a80a0; padding-right: 4px; }
 QGroupBox { border: 1px solid #2a2338; border-radius: 6px; margin-top: 10px; padding-top: 8px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #b8aed0; }

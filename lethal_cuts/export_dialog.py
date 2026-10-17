@@ -26,9 +26,11 @@ class ExportWorker(QObject):
     progress = Signal(float, str)        # overall 0..1, what's happening
     finished = Signal(list, str, bool)   # finished file paths, error message, cancelled
 
-    def __init__(self, video: Path, clips: list[Clip], folder: Path):
+    def __init__(self, video: Path, clips: list[Clip], folder: Path, crf: int = export.X264_QUALITY,
+                 cq: int = export.NVENC_QUALITY):
         super().__init__()
         self.video, self.clips, self.folder = video, clips, folder
+        self.crf, self.cq = crf, cq
         self.encoder_label = ""
         self._cancelled = False
         self._proc = None
@@ -85,12 +87,13 @@ class ExportWorker(QObject):
 
     def _encode(self, clip, info, measured, out, gpu, report):
         self.encoder_label = "graphics card" if gpu else "processor"
-        args = export.encode_args(self.video, clip, info, measured, out, gpu)
+        args = export.encode_args(self.video, clip, info, measured, out, gpu, self.crf, self.cq)
         return export.run_encode(args, clip.length, report, self._register)
 
 
 class ExportDialog(QDialog):
-    def __init__(self, video: Path, clips: list[Clip], folder: Path, parent=None):
+    def __init__(self, video: Path, clips: list[Clip], folder: Path, parent=None,
+                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY):
         super().__init__(parent)
         self.setWindowTitle("Exporting clips")
         self.setModal(True)
@@ -135,7 +138,7 @@ class ExportDialog(QDialog):
         layout.addLayout(buttons)
 
         # Each clip is its own copy, so nothing changes under the export while it runs.
-        self.worker = ExportWorker(video, [replace(c) for c in clips], folder)
+        self.worker = ExportWorker(video, [replace(c) for c in clips], folder, crf, cq)
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)

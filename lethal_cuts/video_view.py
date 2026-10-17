@@ -49,6 +49,7 @@ class VideoView(QGraphicsView):
         self.crop: Crop | None = None   # the box being shown, or None when no clip is selected
         self.crop_is_set = False        # False = the centered default nobody has placed yet
         self.previewing = False
+        self.box_color = QColor(BOX_COLOR)
         self._drag: tuple | None = None  # ("move", grab offset) or ("resize", fixed corner)
 
     # --- state from the main window ---
@@ -130,7 +131,7 @@ class VideoView(QGraphicsView):
         inner.addRect(box)
         painter.fillPath(outside.subtracted(inner), QColor(0, 0, 0, 150))
 
-        color = BOX_COLOR if self.crop_is_set else UNSET_COLOR
+        color = self.box_color if self.crop_is_set else UNSET_COLOR
         pen = QPen(color, 2, Qt.SolidLine if self.crop_is_set else Qt.DashLine)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)

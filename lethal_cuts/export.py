@@ -155,14 +155,15 @@ def audio_filter(measured: dict | None) -> str:
     )
 
 
-def encode_args(video: Path, clip: Clip, info: VideoInfo, measured: dict | None, out: Path, gpu: bool) -> list[str]:
+def encode_args(video: Path, clip: Clip, info: VideoInfo, measured: dict | None, out: Path, gpu: bool,
+                crf: int = X264_QUALITY, cq: int = NVENC_QUALITY) -> list[str]:
     args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1",
             "-ss", f"{clip.start:.3f}", "-t", f"{clip.length:.3f}", "-i", str(video),
             "-map", "0:v:0", "-vf", video_filter(info, clip.crop), "-fps_mode", "cfr"]
     if gpu:
-        args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(NVENC_QUALITY), "-b:v", "0"]
+        args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(cq), "-b:v", "0"]
     else:
-        args += ["-c:v", "libx264", "-preset", "medium", "-crf", str(X264_QUALITY)]
+        args += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf)]
     args += ["-profile:v", "high", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
     if info.has_audio:
         args += ["-map", "0:a:0", "-af", audio_filter(measured) + ",aresample=48000",
