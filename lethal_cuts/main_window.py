@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
 
 from . import crop as cropmath
 from .clip_list import ClipList
+from .export import default_export_folder
+from .export_dialog import ExportDialog, open_upload_pages
 from .project import Clip, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
 from .timeline import Timeline
@@ -133,6 +135,13 @@ class MainWindow(QMainWindow):
         self.preview_btn.setCheckable(True)
         self.preview_btn.setToolTip("Play the selected clip exactly as the tall phone video will look")
         self.preview_btn.clicked.connect(self.toggle_preview)
+        self.export_btn = QPushButton("Export all clips")
+        self.export_btn.setObjectName("exportButton")
+        self.export_btn.setToolTip("Make every clip into a tall 1080x1920 video, ready for Shorts and TikTok (Ctrl+E)")
+        self.export_btn.clicked.connect(self.export_all)
+        self.upload_btn = QPushButton("Upload")
+        self.upload_btn.setToolTip("Opens the YouTube and TikTok upload pages and the exported clips folder, so you can drag each clip in")
+        self.upload_btn.clicked.connect(self.upload)
 
         # Fine-tune: move the selected clip's start or end by a tenth of a second
         self.nudge_box = QGroupBox("Fine-tune the selected clip")
@@ -165,6 +174,11 @@ class MainWindow(QMainWindow):
         clip_buttons.addWidget(self.preview_btn, 1)
         clip_buttons.addWidget(self.delete_btn)
         right_layout.addLayout(clip_buttons)
+        right_layout.addSpacing(6)
+        export_buttons = QHBoxLayout()
+        export_buttons.addWidget(self.export_btn, 1)
+        export_buttons.addWidget(self.upload_btn)
+        right_layout.addLayout(export_buttons)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left)
@@ -181,6 +195,7 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu("&File")
         open_action = QAction("&Open video...", self, shortcut=QKeySequence.Open, triggered=self.choose_video)
         file_menu.addAction(open_action)
+        file_menu.addAction(QAction("&Export all clips", self, shortcut="Ctrl+E", triggered=self.export_all))
         file_menu.addSeparator()
         file_menu.addAction(QAction("E&xit", self, triggered=self.close))
         keys = [
@@ -406,6 +421,31 @@ class MainWindow(QMainWindow):
         self.player.pause()
         self.statusBar().showMessage("Back to the full picture.")
 
+    # --- export and upload ---
+    def export_folder(self) -> Path | None:
+        return default_export_folder(self.project.video_path) if self.project else None
+
+    def export_all(self):
+        if not self.project:
+            return
+        clips = self.project.clips
+        if not clips:
+            self.statusBar().showMessage("There are no clips to export yet. Mark one with I and O first.")
+            return
+        self.stop_preview()
+        self.player.pause()
+        self.save_now()
+        dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self)
+        dialog.exec()
+        if dialog.files and not dialog.error and not dialog.cancelled:
+            self.statusBar().showMessage(f"{len(dialog.files)} clips exported to {self.export_folder()}.")
+
+    def upload(self):
+        folder = self.export_folder()
+        open_upload_pages(folder)
+        if not folder or not folder.exists():
+            self.statusBar().showMessage("Opened the upload pages. Export your clips first, so there's something to drag in.")
+
     # --- fine-tuning ---
     def nudge(self, edge: str, delta: float):
         index = self.clip_list.selected_index()
@@ -493,6 +533,8 @@ class MainWindow(QMainWindow):
         has = self.project is not None
         for w in [self.play_btn, self.mark_in_btn, self.mark_out_btn, *self.speed_group.buttons()]:
             w.setEnabled(has)
+        self.export_btn.setEnabled(has and bool(self.project.clips))
+        self.upload_btn.setEnabled(has)
         index = self.clip_list.selected_index()
         selected = has and index >= 0
         self.delete_btn.setEnabled(selected)

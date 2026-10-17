@@ -10,6 +10,8 @@ A Windows program that turns long, in-person Magic Commander game recordings (iP
 - `lethal_cuts/timeline.py`: the custom-drawn timeline (clip bars, start mark, playhead, click to seek).
 - `lethal_cuts/clip_list.py`: the side table of clips (preview, number, editable name, start, length).
 - `lethal_cuts/thumbnails.py`: the preview pictures, made by FFmpeg on background threads. Requests are bunched up with a short timer, and stale ones are dropped, so holding a nudge button doesn't queue hundreds of FFmpeg runs.
+- `lethal_cuts/export.py`: the export engine (no UI). `probe()` reads size (swapped for rotated phone video), frame rate, audio and HDR. The video goes through crop, lanczos scale to 1080x1920, tone-mapping HLG/PQ to SDR (zscale+tonemap) if needed, a bt709 `setparams` tag, `fps=` for constant frame rate, then libx264 CRF 19. h264_nvenc is used instead if a tiny test encode works, falling back to the CPU mid-batch if it fails. Audio uses two-pass loudnorm (-14 LUFS, -1.5 dBTP, linear) to 48 kHz AAC. Progress comes from `-progress pipe:1`.
+- `lethal_cuts/export_dialog.py`: the export window. `ExportWorker` runs on a QThread, writes `NN name.partial.mp4` and renames it when done, so cancelled or failed clips leave nothing behind. Also holds `open_upload_pages()` (YouTube + TikTok upload pages + the clips folder). Clips export to `<video name> Shorts` next to the video, until Settings (Step 5) adds a folder choice.
 - `lethal_cuts/tools.py`: finds FFmpeg (bundled `vendor/ffmpeg/ffmpeg.exe` first, then PATH) and runs it without a console window.
 - `lethal_cuts/video_view.py`: the video in a QGraphicsView, with the 9:16 crop box drawn in `drawForeground` (so it's per-view). Drag to move, drag a corner to resize, mouse wheel to resize, double-click to reset to full height, click beside it to move it there. Vertical preview (P) zooms the same view into the box with `fitInView` and blacks out the rest.
 - `lethal_cuts/crop.py`: crop box math. A `Crop` is stored as fractions of the video picture (x, y, h), so it works at any resolution. `clip.crop = None` means not placed yet (exports centered). New clips copy `project.last_crop`.
@@ -17,7 +19,8 @@ A Windows program that turns long, in-person Magic Commander game recordings (iP
 ## Choices made
 
 - Video playback uses Qt's own player (QMediaPlayer with Qt's bundled FFmpeg backend), not libmpv. It plays 4K 10-bit HEVC .mov at full speed and 4x, and seeks to the exact frame, with nothing extra to install. Tested on 2026-10-16 on a generated sample.
-- Exports must even out loudness automatically (two-pass loudnorm to -14 LUFS, with a true-peak ceiling).
+- Exports even out loudness automatically (Alex asked for this). Tested: a quiet clip and a loud clip both came out at -14.0 LUFS.
+- On Alex's PC (GTX 1080 Ti) NVENC fails with this FFmpeg build, so it encodes on the CPU: about 1.3 s per second of busy 4K footage. The friend's RTX 5070 should use NVENC; that can only be confirmed on his PC.
 
 ## Qt player gotchas
 

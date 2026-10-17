@@ -25,5 +25,15 @@ def ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
 
 
+def ffprobe_path() -> str | None:
+    """FFprobe (reads a video's details) from the same place as FFmpeg."""
+    ffmpeg = ffmpeg_path()
+    if ffmpeg:
+        beside = Path(ffmpeg).with_name("ffprobe.exe")
+        if beside.exists():
+            return str(beside)
+    return shutil.which("ffprobe")
+
+
 def run_hidden(args: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, timeout=timeout, creationflags=NO_WINDOW)

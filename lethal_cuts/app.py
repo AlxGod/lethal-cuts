@@ -21,6 +21,11 @@ QPushButton#markOut:hover { background: #85263e; }
 QPushButton#speedButton { padding: 6px 9px; }
 QPushButton#speedButton:checked { background: #7b4fc9; border-color: #9a70e0; }
 QPushButton#previewButton:checked { background: #8a6418; border-color: #f0b840; }
+QPushButton#exportButton { background: #7b4fc9; border-color: #9a70e0; font-weight: bold; padding: 8px 14px; }
+QPushButton#exportButton:hover { background: #8d60dc; }
+QPushButton#exportButton:disabled { background: #2c2440; border-color: #3d3358; }
+QProgressBar { background: #2a2338; border: none; border-radius: 5px; height: 14px; text-align: center; }
+QProgressBar::chunk { background: #b0304a; border-radius: 5px; }
 QLabel#dimLabel { color: #8a80a0; padding-right: 4px; }
 QGroupBox { border: 1px solid #2a2338; border-radius: 6px; margin-top: 10px; padding-top: 8px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #b8aed0; }
