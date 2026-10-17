@@ -15,10 +15,24 @@ PROJECT_SUFFIX = ".lcproj"
 
 
 @dataclass
+class Crop:
+    """Where the tall 9:16 box sits, as fractions of the video picture
+    (0 = left/top edge, 1 = right/bottom edge), so it works at any resolution."""
+    x: float  # left edge of the box
+    y: float  # top edge of the box
+    h: float  # box height (1 = the full height of the video)
+
+    @staticmethod
+    def from_dict(d: dict | None) -> "Crop | None":
+        return Crop(float(d["x"]), float(d["y"]), float(d["h"])) if d else None
+
+
+@dataclass
 class Clip:
     start: float  # seconds into the video
     end: float
     name: str = ""
+    crop: Crop | None = None  # None = not set yet (exports centered)
 
     @property
     def length(self) -> float:
@@ -30,6 +44,7 @@ class Project:
     video_path: Path
     clips: list[Clip] = field(default_factory=list)
     position: float = 0.0  # where playback was when last saved
+    last_crop: Crop | None = None  # given to each new clip, since the camera usually doesn't move
 
     @property
     def path(self) -> Path:
@@ -56,6 +71,7 @@ class Project:
             "version": PROJECT_VERSION,
             "video": self.video_path.name,
             "position": round(self.position, 3),
+            "last_crop": asdict(self.last_crop) if self.last_crop else None,
             "clips": [asdict(c) for c in self.clips],
         }
         # Write to a temporary file first, then swap it in, so a crash mid-save
@@ -75,9 +91,12 @@ def open_project(video_path: Path) -> Project:
     if not path.exists():
         return Project(video_path)
     data = json.loads(path.read_text(encoding="utf-8"))
-    clips = [Clip(float(c["start"]), float(c["end"]), c.get("name", "")) for c in data.get("clips", [])]
+    clips = [
+        Clip(float(c["start"]), float(c["end"]), c.get("name", ""), Crop.from_dict(c.get("crop")))
+        for c in data.get("clips", [])
+    ]
     clips.sort(key=lambda c: c.start)
-    return Project(video_path, clips, float(data.get("position", 0.0)))
+    return Project(video_path, clips, float(data.get("position", 0.0)), Crop.from_dict(data.get("last_crop")))
 
 
 def format_time(seconds: float, tenths: bool = True) -> str:

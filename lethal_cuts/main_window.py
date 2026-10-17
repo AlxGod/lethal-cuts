@@ -1,6 +1,7 @@
 """The main window: video, play controls, timeline and the clip list."""
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QPushButton, QSplitter, QStyle, QVBoxLayout, QWidget,
 )
 
+from . import crop as cropmath
 from .clip_list import ClipList
 from .project import Clip, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
@@ -50,6 +52,8 @@ class MainWindow(QMainWindow):
         self.player.setAudioOutput(self.audio)
         self.video = VideoView()
         self.player.setVideoOutput(self.video.video_item)
+        self.video.crop_changed.connect(self._on_crop_changed)
+        self.preview_clip: Clip | None = None  # the clip shown in vertical preview, if on
         self.player.durationChanged.connect(self._on_duration)
         self.player.positionChanged.connect(lambda _: self._refresh_position())
         self.player.playbackStateChanged.connect(lambda _: self._refresh_play_button())
@@ -124,6 +128,11 @@ class MainWindow(QMainWindow):
         self.delete_btn = QPushButton("Delete clip")
         self.delete_btn.setToolTip("Delete the selected clip (Delete key). Ctrl+Z brings it back.")
         self.delete_btn.clicked.connect(self.delete_selected)
+        self.preview_btn = QPushButton("Preview vertical  (P)")
+        self.preview_btn.setObjectName("previewButton")
+        self.preview_btn.setCheckable(True)
+        self.preview_btn.setToolTip("Play the selected clip exactly as the tall phone video will look")
+        self.preview_btn.clicked.connect(self.toggle_preview)
 
         # Fine-tune: move the selected clip's start or end by a tenth of a second
         self.nudge_box = QGroupBox("Fine-tune the selected clip")
@@ -152,7 +161,10 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(clips_title)
         right_layout.addWidget(self.clip_list, 1)
         right_layout.addWidget(self.nudge_box)
-        right_layout.addWidget(self.delete_btn)
+        clip_buttons = QHBoxLayout()
+        clip_buttons.addWidget(self.preview_btn, 1)
+        clip_buttons.addWidget(self.delete_btn)
+        right_layout.addLayout(clip_buttons)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left)
@@ -175,7 +187,8 @@ class MainWindow(QMainWindow):
             ("Space", self.toggle_play),
             ("I", self.mark_start),
             ("O", self.mark_end),
-            ("Escape", self.cancel_mark),
+            ("Escape", self.escape),
+            ("P", self.toggle_preview),
             ("Delete", self.delete_selected),
             ("Ctrl+Z", self.undo_delete),
             ("Left", lambda: self.step(-STEP_SECONDS)),
@@ -213,6 +226,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, KeyError) as e:
             QMessageBox.warning(self, "Lethal Cuts", f"Couldn't read the saved progress for this video:\n{e}\n\nStarting fresh.")
             self.project = Project(path)
+        self.stop_preview()
         self.pending_start = None
         self.last_deleted = None
         self._restore_position = self.project.position
@@ -229,8 +243,16 @@ class MainWindow(QMainWindow):
 
     def _on_media_status(self, status):
         if status == QMediaPlayer.LoadedMedia and self._restore_position is not None:
-            self.seek(self._restore_position)
-            self._restore_position = None
+            # Run just after this signal finishes: pausing inside it crashes Qt's player.
+            QTimer.singleShot(0, self._show_first_frame)
+
+    def _show_first_frame(self):
+        """A stopped player shows no picture when seeking; a paused one shows the frame."""
+        if self._restore_position is None:
+            return
+        self.player.pause()
+        self.seek(self._restore_position)
+        self._restore_position = None
 
     def _on_duration(self, ms: int):
         self.timeline.set_duration(ms / 1000)
@@ -246,6 +268,8 @@ class MainWindow(QMainWindow):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
         else:
+            if self.preview_clip and self.current_time() >= self.preview_clip.end - 0.05:
+                self.seek(self.preview_clip.start)  # watch the preview again
             self.player.play()
 
     def set_speed(self, speed: int):
@@ -270,6 +294,9 @@ class MainWindow(QMainWindow):
 
     def _refresh_position(self):
         pos = self.current_time()
+        if self.preview_clip and pos >= self.preview_clip.end and self.player.playbackState() == QMediaPlayer.PlayingState:
+            self.player.pause()
+            self.statusBar().showMessage("End of the clip. Space watches it again; P or Esc goes back.")
         self.timeline.set_position(pos)
         self.time_label.setText(f"{format_time(pos)} / {format_time(self.player.duration() / 1000)}")
 
@@ -301,7 +328,8 @@ class MainWindow(QMainWindow):
         if overlaps and not self._confirm_overlap(overlaps):
             self.statusBar().showMessage("Clip not saved. Your start mark is still set: press O again, or Esc to cancel.")
             return
-        clip = Clip(start, end)
+        # The camera usually doesn't move, so the new clip gets the last crop box used.
+        clip = Clip(start, end, crop=replace(self.project.last_crop) if self.project.last_crop else None)
         index = self.project.add_clip(clip)
         self.pending_start = None
         self.timeline.set_pending_start(None)
@@ -321,11 +349,62 @@ class MainWindow(QMainWindow):
         )
         return answer == QMessageBox.Yes
 
+    def escape(self):
+        if self.preview_clip:
+            self.stop_preview()
+        else:
+            self.cancel_mark()
+
     def cancel_mark(self):
         if self.pending_start is not None:
             self.pending_start = None
             self.timeline.set_pending_start(None)
             self.statusBar().showMessage("Start mark cancelled.")
+
+    # --- crop box and vertical preview ---
+    def _show_selected_crop(self):
+        index = self.clip_list.selected_index()
+        if not self.project or index < 0:
+            self.video.show_crop(None)
+            return
+        clip = self.project.clips[index]
+        if clip.crop:
+            self.video.show_crop(clip.crop, is_set=True)
+        else:
+            self.video.show_crop(cropmath.default_crop(self.video.aspect()), is_set=False)
+
+    def _on_crop_changed(self, crop):
+        index = self.clip_list.selected_index()
+        if not self.project or index < 0:
+            return
+        self.project.clips[index].crop = crop
+        self.project.last_crop = replace(crop)
+        self._changed()
+
+    def toggle_preview(self):
+        if self.preview_clip:
+            self.stop_preview()
+            return
+        index = self.clip_list.selected_index()
+        if not self.project or index < 0:
+            self.preview_btn.setChecked(False)
+            self.statusBar().showMessage("Pick a clip in the list first, then press P to preview it.")
+            return
+        self.preview_clip = self.project.clips[index]
+        self.preview_btn.setChecked(True)
+        self.video.set_preview(True)
+        self.seek(self.preview_clip.start)
+        self.player.play()
+        self.statusBar().showMessage(f"Previewing clip {index + 1} as a phone video. P or Esc goes back.")
+
+    def stop_preview(self):
+        if self.preview_clip is None:
+            return
+        self.preview_clip = None
+        self.preview_btn.setChecked(False)
+        self.video.set_preview(False)
+        self.player.pause()
+        self.statusBar().showMessage("Back to the full picture.")
 
     # --- fine-tuning ---
     def nudge(self, edge: str, delta: float):
@@ -376,6 +455,11 @@ class MainWindow(QMainWindow):
     def _on_list_selection(self, index: int):
         self.timeline.set_clips(self.project.clips if self.project else [], index)
         self._update_enabled()
+        if self.preview_clip and index >= 0 and self.project.clips[index] is not self.preview_clip:
+            # Picking another clip during preview previews that one instead.
+            self.preview_clip = self.project.clips[index]
+            self.seek(self.preview_clip.start)
+            self.player.play()
 
     def _jump_to_clip(self, index: int):
         if self.project and 0 <= index < len(self.project.clips):
@@ -390,6 +474,7 @@ class MainWindow(QMainWindow):
         index = self.clip_list.selected_index()
         if not self.project or index < 0:
             return
+        self.stop_preview()
         self.last_deleted = self.project.clips.pop(index)
         self._refresh_clips()
         self._changed()
@@ -411,6 +496,8 @@ class MainWindow(QMainWindow):
         index = self.clip_list.selected_index()
         selected = has and index >= 0
         self.delete_btn.setEnabled(selected)
+        self.preview_btn.setEnabled(selected)
+        self._show_selected_crop()
         self.nudge_box.setEnabled(selected)
         if selected:
             clip = self.project.clips[index]
@@ -435,6 +522,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.save_now()
+        self.thumbs.stop()
         super().closeEvent(event)
 
     # --- drag and drop ---

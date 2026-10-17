@@ -20,6 +20,7 @@ QPushButton#markOut { background: #6e1f33; border-color: #8e2b45; }
 QPushButton#markOut:hover { background: #85263e; }
 QPushButton#speedButton { padding: 6px 9px; }
 QPushButton#speedButton:checked { background: #7b4fc9; border-color: #9a70e0; }
+QPushButton#previewButton:checked { background: #8a6418; border-color: #f0b840; }
 QLabel#dimLabel { color: #8a80a0; padding-right: 4px; }
 QGroupBox { border: 1px solid #2a2338; border-radius: 6px; margin-top: 10px; padding-top: 8px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; color: #b8aed0; }

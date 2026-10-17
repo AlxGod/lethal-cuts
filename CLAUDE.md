@@ -11,12 +11,19 @@ A Windows program that turns long, in-person Magic Commander game recordings (iP
 - `lethal_cuts/clip_list.py`: the side table of clips (preview, number, editable name, start, length).
 - `lethal_cuts/thumbnails.py`: the preview pictures, made by FFmpeg on background threads. Requests are bunched up with a short timer, and stale ones are dropped, so holding a nudge button doesn't queue hundreds of FFmpeg runs.
 - `lethal_cuts/tools.py`: finds FFmpeg (bundled `vendor/ffmpeg/ffmpeg.exe` first, then PATH) and runs it without a console window.
-- `lethal_cuts/video_view.py`: the video, drawn in a QGraphicsView so overlays such as the crop box can sit on top.
+- `lethal_cuts/video_view.py`: the video in a QGraphicsView, with the 9:16 crop box drawn in `drawForeground` (so it's per-view). Drag to move, drag a corner to resize, mouse wheel to resize, double-click to reset to full height, click beside it to move it there. Vertical preview (P) zooms the same view into the box with `fitInView` and blacks out the rest.
+- `lethal_cuts/crop.py`: crop box math. A `Crop` is stored as fractions of the video picture (x, y, h), so it works at any resolution. `clip.crop = None` means not placed yet (exports centered). New clips copy `project.last_crop`.
 
 ## Choices made
 
 - Video playback uses Qt's own player (QMediaPlayer with Qt's bundled FFmpeg backend), not libmpv. It plays 4K 10-bit HEVC .mov at full speed and 4x, and seeks to the exact frame, with nothing extra to install. Tested on 2026-10-16 on a generated sample.
 - Exports must even out loudness automatically (two-pass loudnorm to -14 LUFS, with a true-peak ceiling).
+
+## Qt player gotchas
+
+- `QGraphicsVideoItem.nativeSize()` stays empty with the FFmpeg backend. Use `video_item.videoSink().videoSize()`, and its `videoSizeChanged` signal.
+- `boundingRect()` is the whole item, not the letterboxed picture. `VideoView.video_rect()` works out the real picture area.
+- A stopped player draws nothing when seeking, so the window pauses the player once a video loads. Calling `pause()` inside the `mediaStatusChanged` handler crashes Python (segfault), so it's deferred with `QTimer.singleShot(0, ...)`.
 
 ## Testing
 

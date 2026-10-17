@@ -37,7 +37,10 @@ class _Job(QRunnable):
             return
         image = QImage()
         if result.returncode == 0 and image.loadFromData(result.stdout, "PNG"):
-            self.signals.done.emit(self.video, self.seconds, image)
+            try:
+                self.signals.done.emit(self.video, self.seconds, image)
+            except RuntimeError:
+                pass  # the window closed while this picture was being made
 
 
 class ThumbnailMaker(QObject):
@@ -74,6 +77,11 @@ class ThumbnailMaker(QObject):
                 continue
             self._waiting.add(key)
             self.pool.start(_Job(self.ffmpeg, self.video, key, self._signals))
+
+    def stop(self) -> None:
+        """Drops waiting requests and lets running ones finish (used when closing)."""
+        self.pool.clear()
+        self.pool.waitForDone(3000)
 
     def _on_done(self, video: str, seconds: float, image: QImage):
         if video != self.video:
