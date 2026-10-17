@@ -50,7 +50,9 @@ Hold a button to keep going.</li>
 wheel, to zoom in. Double-click the box to make it full height again. The next clip reuses the same box.</li>
 <li><b>Preview it.</b> Press <span class="key">{preview}</span> to watch the clip exactly as the phone video will look.</li>
 <li><b>Export.</b> Click <i>Export all clips</i>. Each clip becomes a 1080x1920 video with its volume evened out for Shorts and TikTok.</li>
-<li><b>Upload.</b> Click <i>Upload</i>. YouTube and TikTok open in your browser along with the clips folder. Drag each clip in.</li>
+<li><b>Post them one at a time.</b> Your finished clips wait in the <i>Post</i> tab, from every game you've done. Click one to watch it,
+then <i>Post to YouTube</i> or <i>Post to TikTok</i>: the upload page opens and the clip is highlighted in its folder, so you can drag it in
+(its name is copied, so paste it as the title). Tick <i>Posted</i> once it's up and it moves to the Posted list.</li>
 </ol>
 <p>Your clips save by themselves into a small <i>.lcproj</i> file next to the video. Close the program any time and open the
 video again later to pick up where you left off.</p>
@@ -64,6 +66,7 @@ SHORTS = """
 <li><b>Show the cards.</b> Place the crop box so viewers can see what was played.</li>
 <li><b>Catch the reactions.</b> The table's reaction is often the best part. Leave a second or two after the play.</li>
 <li><b>End on the payoff.</b> Stop right after the big moment lands. Don't let it trail off.</li>
+<li><b>Post about one a day.</b> A steady stream does better than a pile at once. The Post tab keeps the rest waiting for you.</li>
 </ul>
 """
 

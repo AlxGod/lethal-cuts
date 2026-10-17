@@ -16,10 +16,12 @@ from . import crop as cropmath
 from . import settings as settings_mod
 from .clip_list import ClipList
 from .export import default_export_folder
-from .export_dialog import ExportDialog, open_upload_pages
+from .export_dialog import ExportDialog
 from .guide import GuidePage
 from .help import HELP, HelpButton, with_help
+from .library import Library
 from .settings import QUALITIES, Settings
+from .post_page import PostPage
 from .settings_page import SettingsPage
 from .project import Clip, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
@@ -51,6 +53,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self.project: Project | None = None
+        self.library = Library.load()
         self.pending_start: float | None = None
         self.last_deleted: Clip | None = None
         self._restore_position: float | None = None
@@ -156,9 +159,9 @@ class MainWindow(QMainWindow):
         self.export_btn.setObjectName("exportButton")
         self.export_btn.setToolTip("Make every clip into a tall 1080x1920 video, ready for Shorts and TikTok (Ctrl+E)")
         self.export_btn.clicked.connect(self.export_all)
-        self.upload_btn = QPushButton("Upload")
-        self.upload_btn.setToolTip("Opens the YouTube and TikTok upload pages and the exported clips folder, so you can drag each clip in")
-        self.upload_btn.clicked.connect(self.upload)
+        self.post_btn = QPushButton("Post clips")
+        self.post_btn.setToolTip("Opens the Post tab: every finished clip, ready to watch and post one at a time")
+        self.post_btn.clicked.connect(self.show_post)
 
         # Fine-tune: move the selected clip's start or end by a tenth of a second
         self.nudge_box = QGroupBox("Fine-tune the selected clip")
@@ -205,7 +208,7 @@ class MainWindow(QMainWindow):
         right_layout.addSpacing(6)
         export_buttons = QHBoxLayout()
         export_buttons.addLayout(with_help(self.export_btn, "export", stretch=True), 1)
-        export_buttons.addLayout(with_help(self.upload_btn, "upload"))
+        export_buttons.addLayout(with_help(self.post_btn, "post_clips"))
         right_layout.addLayout(export_buttons)
 
         splitter = QSplitter(Qt.Horizontal)
@@ -223,7 +226,9 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(self.settings)
         self.settings_page.changed.connect(self.apply_settings)
         self.tabs = QTabWidget()
+        self.post_page = PostPage(self.library)
         self.tabs.addTab(container, "Editor")
+        self.tabs.addTab(self.post_page, "Post")
         self.tabs.addTab(self.guide, "Guide")
         self.tabs.addTab(self.settings_page, "Settings")
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -306,6 +311,10 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int):
         if index != 0:
             self.player.pause()
+        if self.tabs.widget(index) is self.post_page:
+            self.post_page.refresh()
+        else:
+            self.post_page.player.pause()
 
     # --- first-time walkthrough ---
     def start_walkthrough(self):
@@ -329,9 +338,11 @@ class MainWindow(QMainWindow):
             (self.video, "6. Pick what's in the phone video",
              "With a clip picked, a tall box appears on the video. Drag it over the cards and players. "
              f"Press {s.key('preview')} to see exactly how the phone video will look."),
-            (self.export_btn, "7. Export and upload",
-             "Export all clips makes each one a ready-to-post vertical video with the volume evened out. "
-             "Upload opens YouTube and TikTok so you can drag them in."),
+            (self.export_btn, "7. Export",
+             "Export all clips makes each one a ready-to-post vertical video with the volume evened out."),
+            (self.tabs.tabBar(), "8. Post them one at a time",
+             "The Post tab keeps every finished clip from every game. Watch them, post the best one to YouTube or "
+             "TikTok, and tick it off. Posted clips move to their own list, so you always know what's left."),
             (self.tabs.tabBar(), "Need help later?",
              'The Guide tab has recording tips, the hotkey list and tips for strong Shorts. Every "?" button explains '
              "the control next to it."),
@@ -599,8 +610,18 @@ class MainWindow(QMainWindow):
         _, crf, cq = QUALITIES[self.settings.quality]
         dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self, crf=crf, cq=cq)
         dialog.exec()
+        for i, file in enumerate(dialog.files):  # the files come back in clip order
+            clip = dialog.clips[i]
+            self.library.add(file, clip.name or f"Clip {i + 1}", self.project.video_path, clip.length)
+        if dialog.files:
+            try:
+                self.library.save()
+            except OSError as e:
+                QMessageBox.warning(self, "Lethal Cuts", f"The clips were exported, but the Post list couldn't be saved:\n{e}")
         if dialog.files and not dialog.error and not dialog.cancelled:
-            self.statusBar().showMessage(f"{len(dialog.files)} clips exported to {self.export_folder()}.")
+            self.statusBar().showMessage(f"{len(dialog.files)} clips exported to {self.export_folder()}. They're in the Post tab.")
+        if dialog.go_to_post:
+            self.show_post()
 
     def _confirm_export_tips(self) -> bool:
         tips = [t for i in range(len(self.project.clips)) for t in self._clip_tips(i)]
@@ -616,11 +637,8 @@ class MainWindow(QMainWindow):
         box.exec()
         return box.clickedButton() is export_btn
 
-    def upload(self):
-        folder = self.export_folder()
-        open_upload_pages(folder)
-        if not folder or not folder.exists():
-            self.statusBar().showMessage("Opened the upload pages. Export your clips first, so there's something to drag in.")
+    def show_post(self):
+        self.tabs.setCurrentWidget(self.post_page)
 
     # --- fine-tuning ---
     def nudge(self, edge: str, delta: float):
@@ -711,7 +729,6 @@ class MainWindow(QMainWindow):
         for w in [self.play_btn, self.mark_in_btn, self.mark_out_btn, *self.speed_group.buttons()]:
             w.setEnabled(has)
         self.export_btn.setEnabled(has and bool(self.project.clips))
-        self.upload_btn.setEnabled(has)
         index = self.clip_list.selected_index()
         selected = has and index >= 0
         self.delete_btn.setEnabled(selected)
@@ -743,6 +760,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.save_now()
         self.thumbs.stop()
+        self.post_page.shutdown()
         super().closeEvent(event)
 
     # --- drag and drop ---

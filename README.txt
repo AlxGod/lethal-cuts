@@ -9,7 +9,7 @@ drag a tall box over the part of the table to keep, and it makes ready-to-post
 
 INSTALLING
 ----------
-1. Double-click "Lethal Cuts Setup 0.1.0.exe".
+1. Double-click "Lethal Cuts Setup 0.2.0.exe".
 2. Windows will probably show a blue box: "Windows protected your PC".
    That's normal for programs made by a person rather than a big company.
    Click "More info", then "Run anyway".
@@ -41,8 +41,12 @@ USING IT
    exactly how the phone video will look.
 6. Click "Export all clips". The finished videos go in a "<video name> Shorts"
    folder next to your video (you can change this in Settings).
-7. Click "Upload". YouTube and TikTok open in your browser, plus the clips folder,
-   so you can drag each clip in.
+7. Your finished clips wait in the Post tab (or click "Post clips"), from every
+   game you've done. Click one to watch it, then "Post to YouTube" or "Post to
+   TikTok": the upload page opens and the clip is highlighted in its folder, so
+   you can drag it in. Its name is copied, so paste it as the title. Tick
+   "Posted" once it's up and it moves to the Posted list, so you always know
+   what's left. About one a day does better than posting them all at once.
 
 Your work saves by itself in a small .lcproj file next to the video. Close the
 program whenever you like and open the same video later to carry on.
@@ -54,8 +58,8 @@ strong Shorts. Every "?" button explains the control next to it.
 
 UPDATING
 --------
-Run the new "Lethal Cuts Setup" over the old one. Your settings and saved clips
-are kept.
+Run the new "Lethal Cuts Setup" over the old one. Your settings, saved clips and
+Post list are kept.
 
 
 UNINSTALLING

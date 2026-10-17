@@ -26,8 +26,6 @@ NVENC_QUALITY = 21
 AUDIO_BITRATE = "192k"
 HDR_TRANSFERS = {"arib-std-b67", "smpte2084"}  # HLG (iPhone default) and PQ
 
-UPLOAD_PAGES = ["https://www.youtube.com/upload", "https://www.tiktok.com/upload"]
-
 
 class ExportError(Exception):
     pass

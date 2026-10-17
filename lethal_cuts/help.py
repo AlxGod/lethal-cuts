@@ -23,8 +23,12 @@ HELP = {
     "delete": "Deletes the picked clip. Changed your mind? Ctrl+Z brings it back.",
     "export": "Turns every clip into a tall 1080x1920 video for Shorts and TikTok: cropped to its box, steady frame rate, "
               "and the volume evened out so it's not too quiet or too loud.",
-    "upload": "Opens the YouTube and TikTok upload pages in your browser, plus the folder with your finished clips, "
-              "so you can drag each clip in.",
+    "post_clips": "Opens the Post tab, which keeps every clip you've exported from every game, ready to watch "
+                  "and post one at a time.",
+    "post": "Every clip you've exported, newest first. Click one to watch it on the right. \"Post to YouTube\" or "
+            "\"Post to TikTok\" opens the upload page and shows the clip in its folder so you can drag it in; its name is "
+            "copied for the title. Tick \"Posted\" once it's up, and it moves to the Posted list. "
+            "Posting about one a day usually does better than several at once.",
     "crop": "The tall box is what ends up in the phone video. Drag it over the cards and players to keep. "
             "Drag a corner or use the mouse wheel to zoom in. Double-click it for full height.",
 }

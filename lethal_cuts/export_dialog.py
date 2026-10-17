@@ -14,14 +14,6 @@ from . import export
 from .project import Clip
 
 
-def open_upload_pages(folder: Path | None) -> None:
-    """Opens YouTube's and TikTok's upload pages and the export folder, so clips can be dragged in."""
-    for url in export.UPLOAD_PAGES:
-        QDesktopServices.openUrl(QUrl(url))
-    if folder and folder.exists():
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
-
-
 class ExportWorker(QObject):
     progress = Signal(float, str)        # overall 0..1, what's happening
     finished = Signal(list, str, bool)   # finished file paths, error message, cancelled
@@ -102,6 +94,7 @@ class ExportDialog(QDialog):
         self.files: list[str] = []
         self.error = ""
         self.cancelled = False
+        self.go_to_post = False
         self._started = time.monotonic()
 
         self.title = QLabel(f"Making {len(clips)} vertical clip{'s' if len(clips) != 1 else ''}...")
@@ -117,17 +110,18 @@ class ExportDialog(QDialog):
         self.cancel_btn.clicked.connect(self._cancel)
         self.folder_btn = QPushButton("Open folder")
         self.folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.folder))))
-        self.upload_btn = QPushButton("Upload")
-        self.upload_btn.setToolTip("Opens the YouTube and TikTok upload pages and the clips folder, so you can drag each clip in")
-        self.upload_btn.clicked.connect(lambda: open_upload_pages(self.folder))
+        self.post_btn = QPushButton("See them in the Post tab")
+        self.post_btn.setObjectName("exportButton")
+        self.post_btn.setToolTip("Watch the finished clips and post them one at a time")
+        self.post_btn.clicked.connect(self._go_to_post)
         self.close_btn = QPushButton("Close")
         self.close_btn.clicked.connect(self.accept)
-        for b in (self.folder_btn, self.upload_btn, self.close_btn):
+        for b in (self.folder_btn, self.post_btn, self.close_btn):
             b.hide()
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        for b in (self.cancel_btn, self.folder_btn, self.upload_btn, self.close_btn):
+        for b in (self.cancel_btn, self.folder_btn, self.post_btn, self.close_btn):
             buttons.addWidget(b)
         layout = QVBoxLayout(self)
         layout.addWidget(self.title)
@@ -138,7 +132,8 @@ class ExportDialog(QDialog):
         layout.addLayout(buttons)
 
         # Each clip is its own copy, so nothing changes under the export while it runs.
-        self.worker = ExportWorker(video, [replace(c) for c in clips], folder, crf, cq)
+        self.clips = [replace(c) for c in clips]
+        self.worker = ExportWorker(video, self.clips, folder, crf, cq)
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
@@ -163,7 +158,7 @@ class ExportDialog(QDialog):
         self.close_btn.show()
         if files:
             self.folder_btn.show()
-            self.upload_btn.show()
+            self.post_btn.show()
         n = len(files)
         if error:
             self.title.setText("Export stopped")
@@ -175,7 +170,11 @@ class ExportDialog(QDialog):
         else:
             self.title.setText(f"{n} clip{'s' if n != 1 else ''} ready to post")
             self.step.setText(f"Saved in {self.folder}")
-            self.detail.setText("Press Upload to open YouTube and TikTok, then drag each clip in.")
+            self.detail.setText("They're waiting in the Post tab, where you can watch them and post one at a time.")
+
+    def _go_to_post(self):
+        self.go_to_post = True
+        self.accept()
 
     def _cancel(self):
         self.cancel_btn.setEnabled(False)
