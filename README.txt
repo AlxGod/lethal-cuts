@@ -13,7 +13,7 @@ play on the computer, like Tabletop Simulator.
 
 INSTALLING
 ----------
-1. Double-click "Lethal Cuts Setup 0.4.3.exe".
+1. Double-click "Lethal Cuts Setup 0.4.4.exe".
 2. Windows will probably show a blue box: "Windows protected your PC".
    That's normal for programs made by a person rather than a big company.
    Click "More info", then "Run anyway".
@@ -117,6 +117,10 @@ When a new version is out, a gold bar appears at the top of Lethal Cuts when you
 open it. Click "Update now": it downloads the new version, installs it and opens
 it again by itself, in about a minute. Your settings, videos and Post list are
 kept. (Help > Check for updates checks by hand.)
+
+Don't move the program's files by hand: Windows and the Update button keep track
+of where they are. To move Lethal Cuts, uninstall it and install it again in the
+new folder (your videos and settings stay).
 
 
 UNINSTALLING

@@ -92,6 +92,20 @@ begin
       Result := Copy(ParamStr(i), 10, Length(ParamStr(i)));
 end;
 
+// Browsing to an existing "Lethal Cuts" folder makes Windows add "\Lethal Cuts" again
+// (G:\Lethal Cuts\Lethal Cuts). Use the folder that was picked instead.
+procedure UndoDoubleFolder;
+var
+  Dir, Parent: String;
+begin
+  Dir := RemoveBackslashUnlessRoot(WizardDirValue);
+  Parent := ExtractFileDir(Dir);
+  if (Parent <> Dir) and (CompareText(ExtractFileName(Dir), 'Lethal Cuts') = 0) and
+     ((CompareText(ExtractFileName(Parent), 'Lethal Cuts') = 0) or
+      FileExists(AddBackslash(Parent) + 'program\Lethal Cuts.exe')) then
+    WizardForm.DirEdit.Text := Parent;
+end;
+
 procedure InitializeWizard;
 begin
   SavePage := CreateInputDirPage(wpSelectDir,
@@ -101,6 +115,8 @@ begin
     'Uninstalling or updating Lethal Cuts never deletes anything in this folder.',
     False, 'New Folder');
   SavePage.Add('');
+  // Updates skip the folder page, so fix a doubled folder (from /DIR or an earlier install) here too
+  UndoDoubleFolder;
   SavePage.Values[0] := GetPreviousData('SaveFolder', ExpandConstant('{%USERPROFILE}\Videos\Lethal Cuts'));
   if SaveDirParam <> '' then
     SavePage.Values[0] := SaveDirParam;
@@ -123,20 +139,6 @@ begin
     Result := SaveStringToFile(Test, 'test', False);
     DeleteFile(Test);
   end;
-end;
-
-// Browsing to an existing "Lethal Cuts" folder makes Windows add "\Lethal Cuts" again
-// (G:\Lethal Cuts\Lethal Cuts). Use the folder that was picked instead.
-procedure UndoDoubleFolder;
-var
-  Dir, Parent: String;
-begin
-  Dir := RemoveBackslashUnlessRoot(WizardDirValue);
-  Parent := ExtractFileDir(Dir);
-  if (Parent <> Dir) and (CompareText(ExtractFileName(Dir), 'Lethal Cuts') = 0) and
-     ((CompareText(ExtractFileName(Parent), 'Lethal Cuts') = 0) or
-      FileExists(AddBackslash(Parent) + 'program\Lethal Cuts.exe')) then
-    WizardForm.DirEdit.Text := Parent;
 end;
 
 // A fresh install into a folder that already has a Videos folder (a reinstall) suggests it for videos
