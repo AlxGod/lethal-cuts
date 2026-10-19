@@ -20,6 +20,12 @@ HELP = {
                 "the bar. The bar under it slides along; Shift + wheel does too. Double-click the timeline to see "
                 "the whole game again.\n\n"
                 "Gold flags are moments marked while recording.",
+    "overlays": "Cards and text shown on top of the video. + Text puts text where the playhead is, for 4 seconds. "
+                "Drag it on the video to place it; drag its corner, use the Size slider or scroll the mouse wheel "
+                "over it to resize it. Its bar in the strip under the timeline sets when it shows: drag the bar to "
+                "move it, or drag either end to make it show longer or shorter.\n\n"
+                "What you see is what gets exported. Shorts and the long video each have their own: text added while "
+                "making Shorts shows in any clip that covers that moment.",
     "moments": "Moments you marked while recording, by pressing the moment key (F8 unless you changed it) when "
                "something great happened. Each one is a gold flag on the timeline, with the few minutes before it "
                "shaded gold. Moment > (key N) jumps to the start of the next one, so you can watch the lead-up and "

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import crop as cropmath
+from . import overlays as overlay_mod
 from .project import Clip, Crop
 from .tools import NO_WINDOW, ffmpeg_path, ffprobe_path, run_hidden
 
@@ -153,11 +154,26 @@ def audio_filter(measured: dict | None) -> str:
     )
 
 
+def split_chain(chain: str) -> tuple[str, str]:
+    """Splits a filter chain just before its final color steps, which is where overlays go."""
+    at = chain.index("format=yuv420p")
+    return chain[:at].rstrip(","), chain[at:]
+
+
+def video_args(chain: str, placed: list | None, fps: int) -> list[str]:
+    """The video part of the FFmpeg command: a plain chain, or a graph that lays the overlays on."""
+    if not placed:
+        return ["-map", "0:v:0", "-vf", chain]
+    pre, post = split_chain(chain)
+    return overlay_mod.image_inputs(placed, fps) + [
+        "-filter_complex", overlay_mod.filter_graph(pre, post, placed, 1, fps), "-map", "[vout]"]
+
+
 def encode_args(video: Path, clip: Clip, info: VideoInfo, measured: dict | None, out: Path, gpu: bool,
-                crf: int = X264_QUALITY, cq: int = NVENC_QUALITY) -> list[str]:
+                crf: int = X264_QUALITY, cq: int = NVENC_QUALITY, placed: list | None = None) -> list[str]:
     args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1",
             "-ss", f"{clip.start:.3f}", "-t", f"{clip.length:.3f}", "-i", str(video),
-            "-map", "0:v:0", "-vf", video_filter(info, clip.crop), "-fps_mode", "cfr"]
+            *video_args(video_filter(info, clip.crop), placed, info.fps), "-fps_mode", "cfr"]
     if gpu:
         args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(cq), "-b:v", "0"]
     else:

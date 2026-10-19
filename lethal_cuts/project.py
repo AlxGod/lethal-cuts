@@ -40,6 +40,41 @@ class Clip:
 
 
 @dataclass
+class Overlay:
+    """Something shown on top of the video for a while: a card picture or some text.
+
+    Times are seconds into the recording. Place and size are fractions of the finished
+    video (the tall Short or the widescreen long video), so they work at any resolution."""
+    kind: str             # "text" or "card"
+    start: float
+    end: float
+    x: float = 0.5        # where its middle is: 0 = left edge, 1 = right edge
+    y: float = 0.3        # 0 = top, 1 = bottom
+    size: float = 0.6     # its width, as a fraction of the video's width
+    anim_in: str = "pop"  # how it comes in: none, fade, pop or slide
+    anim_out: str = "fade"
+    text: str = ""
+    style: str = "plain"
+    card: dict | None = None  # the card's name, picture file and Scryfall details
+
+    @property
+    def length(self) -> float:
+        return self.end - self.start
+
+    @staticmethod
+    def from_dict(d: dict) -> "Overlay":
+        o = Overlay(str(d.get("kind", "text")), float(d["start"]), float(d["end"]))
+        for name in ("x", "y", "size"):
+            if name in d:
+                setattr(o, name, float(d[name]))
+        for name in ("anim_in", "anim_out", "text", "style"):
+            if name in d:
+                setattr(o, name, str(d[name]))
+        o.card = d.get("card") if isinstance(d.get("card"), dict) else None
+        return o
+
+
+@dataclass
 class Project:
     video_path: Path
     clips: list[Clip] = field(default_factory=list)
@@ -47,6 +82,8 @@ class Project:
     last_crop: Crop | None = None  # given to each new clip, since the camera usually doesn't move
     cuts: list[Clip] = field(default_factory=list)  # long video: the dead stretches to leave out
     moments: list[float] = field(default_factory=list)  # seconds where the moment key was pressed while recording
+    overlays: list[Overlay] = field(default_factory=list)       # cards and text on the Shorts
+    long_overlays: list[Overlay] = field(default_factory=list)  # cards and text on the long video
 
     @property
     def path(self) -> Path:
@@ -77,6 +114,8 @@ class Project:
             "clips": [asdict(c) for c in self.clips],
             "cuts": [{"start": round(c.start, 3), "end": round(c.end, 3)} for c in self.cuts],
             "moments": [round(m, 3) for m in self.moments],
+            "overlays": [asdict(o) for o in self.overlays],
+            "long_overlays": [asdict(o) for o in self.long_overlays],
         }
         # Write to a temporary file first, then swap it in, so a crash mid-save
         # can never leave a half-written project file behind.
@@ -102,8 +141,10 @@ def open_project(video_path: Path) -> Project:
     clips.sort(key=lambda c: c.start)
     cuts = sorted((Clip(float(c["start"]), float(c["end"])) for c in data.get("cuts", [])), key=lambda c: c.start)
     moments = sorted(float(m) for m in data.get("moments", []))
+    overlays = sorted((Overlay.from_dict(o) for o in data.get("overlays", [])), key=lambda o: o.start)
+    long_overlays = sorted((Overlay.from_dict(o) for o in data.get("long_overlays", [])), key=lambda o: o.start)
     return Project(video_path, clips, float(data.get("position", 0.0)), Crop.from_dict(data.get("last_crop")), cuts,
-                   moments)
+                   moments, overlays, long_overlays)
 
 
 def format_time(seconds: float, tenths: bool = True) -> str:

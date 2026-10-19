@@ -1,10 +1,14 @@
-"""The video picture, with the tall 9:16 crop box drawn on top.
+"""The video picture, with the tall 9:16 crop box and any cards or text drawn on top.
 
-The video is drawn inside a QGraphicsView (a canvas). The crop box is drawn in
-this view's foreground, so the vertical preview can zoom the same canvas into
-the box without the box's outline showing up in it.
+The video is drawn inside a QGraphicsView (a canvas). The crop box and the overlays
+are drawn in this view's foreground, so the vertical preview can zoom the same canvas
+into the box without the box's outline showing up in it. Overlays sit inside the
+finished video's frame (the crop box for Shorts, the whole picture for long videos)
+and can be dragged around and resized there.
 """
 from __future__ import annotations
+
+import math
 
 from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen
@@ -12,7 +16,8 @@ from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import QFrame, QGraphicsScene, QGraphicsTextItem, QGraphicsView
 
 from . import crop as cropmath
-from .project import Crop
+from . import overlays as ov
+from .project import Crop, Overlay
 
 HANDLE = 12          # corner handle size in pixels
 BOX_COLOR = QColor("#f0b840")
@@ -22,6 +27,8 @@ UNSET_COLOR = QColor("#ffffff")
 class VideoView(QGraphicsView):
     clicked = Signal()
     crop_changed = Signal(object)  # Crop, while the user drags or resizes the box
+    overlay_pressed = Signal(int)  # index of the overlay clicked on the video
+    overlay_changed = Signal(int)  # an overlay was moved or resized (changed in place)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -50,7 +57,16 @@ class VideoView(QGraphicsView):
         self.crop_is_set = False        # False = the centered default nobody has placed yet
         self.previewing = False
         self.box_color = QColor(BOX_COLOR)
-        self._drag: tuple | None = None  # ("move", grab offset) or ("resize", fixed corner)
+        self._drag: tuple | None = None  # ("move", grab offset) or ("resize", fixed corner), or an overlay drag
+
+        # Overlays: set by the main window as the video plays
+        self.overlays: list[Overlay] = []
+        self.overlay_time = 0.0
+        self.overlay_crop: Crop | None = None  # Shorts: the box the overlays sit in. None = the whole picture
+        self.overlay_size = (1920, 1080)       # the finished video's size in pixels
+        self.overlay_bounds: tuple[float, float] | None = None  # previewing one clip: overlays are cut to it
+        self.selected_overlay = -1
+        self.editing = True                    # paused: show the selected overlay's outline and handle
 
     # --- state from the main window ---
     def set_has_video(self, has_video: bool) -> None:
@@ -90,6 +106,53 @@ class VideoView(QGraphicsView):
         self.previewing = on
         self._layout()
 
+    def set_overlays(self, overlays: list[Overlay], t: float, crop: Crop | None, size: tuple[int, int],
+                     selected: int, editing: bool, bounds: tuple[float, float] | None = None) -> None:
+        self.overlays, self.overlay_time, self.overlay_crop = overlays, t, crop
+        self.overlay_size, self.selected_overlay, self.editing, self.overlay_bounds = size, selected, editing, bounds
+        self.viewport().update()
+
+    # --- overlay geometry ---
+    def overlay_frame(self) -> QRectF:
+        """Where the finished video's picture sits on the canvas."""
+        video = self.video_rect()
+        if self.overlay_crop is None:
+            return video
+        return cropmath.to_rect(cropmath.clamp(self.overlay_crop, self.aspect()), video)
+
+    def _shown_window(self, o: Overlay) -> tuple[float, float]:
+        if self.overlay_bounds:
+            return max(o.start, self.overlay_bounds[0]), min(o.end, self.overlay_bounds[1])
+        return o.start, o.end
+
+    def visible_overlays(self) -> list[int]:
+        found = []
+        for i, o in enumerate(self.overlays):
+            a, b = self._shown_window(o)
+            if a <= self.overlay_time <= b:
+                found.append(i)
+        return found
+
+    def overlay_rect(self, index: int, animated: bool = True) -> tuple[QRectF, float]:
+        """Where an overlay is drawn on the canvas right now, and how see-through it is."""
+        o = self.overlays[index]
+        w_px, h_px = self.overlay_size
+        frame = self.overlay_frame()
+        k = frame.width() / w_px
+        image = ov.render(o, w_px, h_px)
+        cx, cy = ov.resting_center(o, image.width(), image.height(), w_px, h_px)
+        opacity, scale, dx = 1.0, 1.0, 0.0
+        if animated:
+            a, b = self._shown_window(o)
+            opacity, scale, dx = ov.look(o, a, b, self.overlay_time, ov.slide_offsets(cx, image.width(), w_px))
+        w, h = image.width() * scale, image.height() * scale
+        rect = QRectF(frame.left() + (cx + dx - w / 2) * k, frame.top() + (cy - h / 2) * k, w * k, h * k)
+        return rect, opacity
+
+    def _handle_size(self) -> float:
+        """The resize handle stays the same size on screen, even zoomed into the vertical preview."""
+        return HANDLE / max(self.transform().m11(), 0.01)
+
     # --- layout ---
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -117,9 +180,39 @@ class VideoView(QGraphicsView):
             return
         if self.previewing:
             self._draw_preview_mask(painter)
+        elif self.crop is not None:
+            self._draw_crop(painter)
+        self._draw_overlays(painter)
+
+    def _draw_overlays(self, painter: QPainter):
+        visible = self.visible_overlays()
+        if not visible:
             return
-        if self.crop is None:
-            return
+        painter.save()
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setClipRect(self.overlay_frame())  # just like the export, nothing shows outside the video
+        w_px, h_px = self.overlay_size
+        for i in visible:
+            rect, opacity = self.overlay_rect(i)
+            if opacity <= 0.001:
+                continue
+            painter.setOpacity(opacity)
+            painter.drawImage(rect, ov.render(self.overlays[i], w_px, h_px))
+        painter.setOpacity(1.0)
+        if self.editing and self.selected_overlay in visible:
+            rect, _ = self.overlay_rect(self.selected_overlay, animated=False)
+            pen = QPen(BOX_COLOR, 2 / max(self.transform().m11(), 0.01), Qt.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(rect)
+            hs = self._handle_size()
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(BOX_COLOR)
+            painter.drawRect(QRectF(rect.right() - hs / 2, rect.bottom() - hs / 2, hs, hs))
+        painter.restore()
+
+    def _draw_crop(self, painter: QPainter):
         video = self.video_rect()
         box = cropmath.to_rect(self.crop, video)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -193,11 +286,61 @@ class VideoView(QGraphicsView):
             return ("move", None)
         return None
 
+    def _overlay_hit(self, pos: QPointF):
+        """The overlay under the mouse: ("ov_resize", index) on the selected one's corner, ("ov_move", index), or None."""
+        if not self.has_picture():
+            return None
+        visible = self.visible_overlays()
+        if self.selected_overlay in visible:
+            rect, _ = self.overlay_rect(self.selected_overlay, animated=False)
+            hs = self._handle_size()
+            if abs(pos.x() - rect.right()) <= hs and abs(pos.y() - rect.bottom()) <= hs:
+                return ("ov_resize", self.selected_overlay)
+        # The selected one first, then the one drawn on top
+        for i in sorted(visible, key=lambda i: (i == self.selected_overlay, i), reverse=True):
+            if self.overlay_rect(i, animated=False)[0].contains(pos):
+                return ("ov_move", i)
+        return None
+
+    def _overlay_drag(self, pos: QPointF):
+        kind, index, data = self._drag
+        o = self.overlays[index]
+        w_px, h_px = self.overlay_size
+        frame = self.overlay_frame()
+        if kind == "ov_move":
+            center = pos - data
+            o.x = min(max((center.x() - frame.left()) / frame.width(), 0.0), 1.0)
+            o.y = min(max((center.y() - frame.top()) / frame.height(), 0.0), 1.0)
+        else:
+            middle, start_distance, start_size = data
+            distance = math.hypot(pos.x() - middle.x(), pos.y() - middle.y())
+            o.size = min(max(start_size * distance / max(start_distance, 1.0), ov.MIN_SIZE), ov.MAX_SIZE)
+        # Keep what's stored where it's really shown (pushed in from the edges)
+        image = ov.render(o, w_px, h_px)
+        cx, cy = ov.resting_center(o, image.width(), image.height(), w_px, h_px)
+        o.x, o.y = cx / w_px, cy / h_px
+        self.viewport().update()
+        self.overlay_changed.emit(index)
+
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
         self.clicked.emit()
         pos = self.mapToScene(event.position().toPoint())
+        over = self._overlay_hit(pos)
+        if over:
+            kind, index = over
+            self.selected_overlay = index
+            self.overlay_pressed.emit(index)
+            rect, _ = self.overlay_rect(index, animated=False)
+            if kind == "ov_move":
+                self._drag = ("ov_move", index, pos - rect.center())
+            else:
+                middle = rect.center()
+                self._drag = ("ov_resize", index, (middle, math.hypot(pos.x() - middle.x(), pos.y() - middle.y()),
+                                                   self.overlays[index].size))
+            self.viewport().update()
+            return
         hit = self._hit(pos)
         if hit is None and self.crop is not None and not self.previewing and self.video_rect().contains(pos):
             # Clicking beside the box moves it there.
@@ -212,7 +355,14 @@ class VideoView(QGraphicsView):
 
     def mouseMoveEvent(self, event):
         pos = self.mapToScene(event.position().toPoint())
+        if self._drag and self._drag[0].startswith("ov_"):
+            self._overlay_drag(pos)
+            return
         if self._drag is None:
+            over = self._overlay_hit(pos)
+            if over:
+                self.viewport().setCursor(Qt.SizeFDiagCursor if over[0] == "ov_resize" else Qt.SizeAllCursor)
+                return
             hit = self._hit(pos)
             if hit is None:
                 self.viewport().unsetCursor()
@@ -235,7 +385,8 @@ class VideoView(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event):
         # Double-click the box: back to full height, centered where it is.
-        if self._hit(self.mapToScene(event.position().toPoint())) is not None:
+        pos = self.mapToScene(event.position().toPoint())
+        if self._overlay_hit(pos) is None and self._hit(pos) is not None:
             c = self.crop
             aspect = self.aspect()
             h = cropmath.max_height(aspect)
@@ -243,6 +394,15 @@ class VideoView(QGraphicsView):
             self._emit(Crop(cx - cropmath.box_width(h, aspect) / 2, (1 - h) / 2, h))
 
     def wheelEvent(self, event):
+        over = self._overlay_hit(self.mapToScene(event.position().toPoint()))
+        if over and event.angleDelta().y():
+            # Mouse wheel over a card or text makes it bigger or smaller
+            o = self.overlays[over[1]]
+            factor = 1.06 if event.angleDelta().y() > 0 else 1 / 1.06
+            o.size = min(max(o.size * factor, ov.MIN_SIZE), ov.MAX_SIZE)
+            self.viewport().update()
+            self.overlay_changed.emit(over[1])
+            return
         if self.crop is None or self.previewing:
             return
         # Mouse wheel resizes the box around its middle.

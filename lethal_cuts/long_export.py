@@ -102,9 +102,9 @@ def measure_loudness(video: Path, pieces, fps: int) -> dict | None:
 
 
 def encode_args(video: Path, info: export.VideoInfo, pieces, measured, out: Path, gpu: bool, size: str,
-                crf: int, cq: int) -> list[str]:
+                crf: int, cq: int, placed: list | None = None) -> list[str]:
     args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1", "-i", str(video),
-            "-map", "0:v:0", "-vf", video_filter(info, pieces, size), "-fps_mode", "cfr"]
+            *export.video_args(video_filter(info, pieces, size), placed, info.fps), "-fps_mode", "cfr"]
     if gpu:
         args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(cq), "-b:v", "0"]
     else:
@@ -127,9 +127,10 @@ class LongExportWorker(QObject):
     finished = Signal(list, str, bool)
 
     def __init__(self, video: Path, cuts: list[Clip], duration: float, folder: Path, size: str,
-                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY):
+                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY, placed: list | None = None):
         super().__init__()
         self.video, self.cuts, self.duration, self.folder, self.size = video, cuts, duration, folder, size
+        self.placed = placed or []  # overlays.Placed, already timed for the finished video
         self.crf, self.cq = crf, cq
         self.encoder_label = ""
         self._cancelled = False
@@ -164,11 +165,12 @@ class LongExportWorker(QObject):
             report = lambda p: self.progress.emit(p, f"Making the long video ({format_time(length, tenths=False)} long)")
             self.encoder_label = "graphics card" if gpu else "processor"
             code, log = export.run_encode(encode_args(self.video, info, pieces, measured, temp, gpu, self.size,
-                                                      self.crf, self.cq), length, report, self._register)
+                                                      self.crf, self.cq, self.placed), length, report, self._register)
             if code != 0 and gpu and not self._cancelled:
                 self.encoder_label = "processor"  # the graphics card failed: use the processor instead
                 code, log = export.run_encode(encode_args(self.video, info, pieces, measured, temp, False,
-                                                          self.size, self.crf, self.cq), length, report, self._register)
+                                                          self.size, self.crf, self.cq, self.placed), length, report,
+                                              self._register)
             if self._cancelled:
                 self.finished.emit([], "", True)
                 return

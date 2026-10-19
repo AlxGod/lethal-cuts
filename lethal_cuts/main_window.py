@@ -12,7 +12,11 @@ from PySide6.QtWidgets import (
     QMessageBox, QPushButton, QScrollBar, QSlider, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
+import shutil
+import tempfile
+
 from . import crop as cropmath
+from . import overlays as overlay_mod
 from . import updater
 from . import settings as settings_mod
 from .clip_list import ClipList
@@ -21,7 +25,8 @@ from .folders import default_save_folder, long_videos_folder, save_folder, short
 from . import __version__
 from .export_dialog import ExportDialog
 from .guide import GuidePage
-from .long_export import LongExportWorker, kept_length
+from .long_export import LongExportWorker, kept_length, kept_pieces
+from .export import ExportError, probe
 from .help import HELP, HelpButton, with_help
 from .library import Library
 from .limits import SHORTS_MAX, LimitNote, long_video_problems
@@ -29,7 +34,8 @@ from .settings import QUALITIES, Settings
 from .post_page import PostPage
 from .record_page import RecordPage
 from .settings_page import SettingsPage
-from .project import Clip, Project, format_time, open_project
+from .overlay_panel import OverlayPanel
+from .project import Clip, Overlay, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
 from .timeline import Timeline
 from .video_view import VideoView
@@ -68,6 +74,8 @@ class MainWindow(QMainWindow):
         self.library = Library.load()
         self.pending_start: float | None = None
         self.last_deleted: tuple[bool, Clip] | None = None  # (was it a cut, the clip or cut)
+        self.last_deleted_overlay: tuple[bool, Overlay] | None = None  # (was it on the long video, the overlay)
+        self._undo_overlay = False  # the last thing deleted was an overlay
         self.long_mode = False      # Editor is making a long video (marks are cuts) instead of Shorts
         self.long_preview = False   # playing the long video with the cuts skipped
         self._restore_position: float | None = None
@@ -79,6 +87,8 @@ class MainWindow(QMainWindow):
         self.video = VideoView()
         self.player.setVideoOutput(self.video.video_item)
         self.video.crop_changed.connect(self._on_crop_changed)
+        self.video.overlay_pressed.connect(self._on_overlay_pressed)
+        self.video.overlay_changed.connect(self._on_overlay_moved)
         self.preview_clip: Clip | None = None  # the clip shown in vertical preview, if on
         self.player.durationChanged.connect(self._on_duration)
         self.player.positionChanged.connect(lambda _: self._refresh_position())
@@ -169,6 +179,8 @@ class MainWindow(QMainWindow):
         self.timeline.seek_requested.connect(self.seek)
         self.timeline.clip_clicked.connect(self._select_clip)
         self.timeline.view_changed.connect(self._on_timeline_view)
+        self.timeline.overlay_clicked.connect(self._on_overlay_pressed)
+        self.timeline.overlay_timed.connect(self._on_overlay_moved)
         self.timeline_scroll = QScrollBar(Qt.Horizontal)
         self.timeline_scroll.valueChanged.connect(lambda v: self.timeline.set_view_start(v / 10))
         self.timeline_scroll.hide()
@@ -280,6 +292,9 @@ class MainWindow(QMainWindow):
         mode_row.addStretch(1)
         right_layout.addLayout(mode_row)
         right_layout.addSpacing(4)
+        clips_page = QWidget()
+        clips_layout = QVBoxLayout(clips_page)
+        clips_layout.setContentsMargins(0, 6, 0, 0)
         self.list_title = QLabel("Clips")
         self.list_title.setObjectName("panelTitle")
         self.list_help = HelpButton(HELP["clips"])
@@ -287,37 +302,48 @@ class MainWindow(QMainWindow):
         title_row.addWidget(self.list_title)
         title_row.addStretch(1)
         title_row.addWidget(self.list_help)
-        right_layout.addLayout(title_row)
+        clips_layout.addLayout(title_row)
         # Friendly tips about the picked clip (can be turned off in Settings)
         self.tip_label = QLabel()
         self.tip_label.setObjectName("tipLabel")
         self.tip_label.setWordWrap(True)
         self.tip_label.hide()
-        right_layout.addWidget(self.tip_label)
+        clips_layout.addWidget(self.tip_label)
         self.long_note = QLabel("Mark the parts to cut out: press I where a dead stretch starts and O where it ends. "
                                 "Everything else stays in the long video.")
         self.long_note.setObjectName("dimLabel")
         self.long_note.setWordWrap(True)
         self.long_note.hide()
-        right_layout.addWidget(self.long_note)
-        right_layout.addWidget(self.clip_list, 1)
-        right_layout.addWidget(self.cut_list, 1)
+        clips_layout.addWidget(self.long_note)
+        clips_layout.addWidget(self.clip_list, 1)
+        clips_layout.addWidget(self.cut_list, 1)
         self.long_summary = QLabel()
         self.long_summary.setObjectName("timeLabel")
         self.long_summary.setWordWrap(True)
         self.long_summary.hide()
-        right_layout.addWidget(self.long_summary)
+        clips_layout.addWidget(self.long_summary)
         self.limit_note = LimitNote()
         self.limit_note.verified.connect(lambda: self.set_youtube_verified(True))
-        right_layout.addWidget(self.limit_note)
-        right_layout.addWidget(self.nudge_box)
+        clips_layout.addWidget(self.limit_note)
+        clips_layout.addWidget(self.nudge_box)
         self.preview_help = HelpButton(HELP["preview"])
         self.export_help = HelpButton(HELP["export"])
         clip_buttons = QHBoxLayout()
         clip_buttons.addWidget(self.preview_btn, 1)
         clip_buttons.addWidget(self.preview_help)
         clip_buttons.addLayout(with_help(self.delete_btn, "delete"))
-        right_layout.addLayout(clip_buttons)
+        clips_layout.addLayout(clip_buttons)
+        # Cards and text on top of the video
+        self.overlay_panel = OverlayPanel()
+        self.overlay_panel.add_text.connect(self.add_text)
+        self.overlay_panel.selected.connect(self._on_overlay_selected)
+        self.overlay_panel.edited.connect(self._on_overlay_edited)
+        self.overlay_panel.delete_requested.connect(self.delete_overlay)
+        self.overlay_panel.jump_requested.connect(self._jump_to_overlay)
+        self.side_tabs = QTabWidget()
+        self.side_tabs.addTab(clips_page, "Clips")
+        self.side_tabs.addTab(self.overlay_panel, "On screen")
+        right_layout.addWidget(self.side_tabs, 1)
         right_layout.addSpacing(6)
         export_buttons = QHBoxLayout()
         export_buttons.addWidget(self.export_btn, 1)
@@ -653,6 +679,7 @@ class MainWindow(QMainWindow):
         self.video.set_has_video(True)
         self.setWindowTitle(f"Lethal Cuts - {path.name}")
         self._refresh_clips()
+        self._refresh_overlays()
         self._refresh_moments()
         n, cuts = len(self.project.clips), len(self.project.cuts)
         saved = [f"{n} clip{'s' if n != 1 else ''}"] if n else []
@@ -774,6 +801,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("End of the clip. Space watches it again; P or Esc goes back.")
         self.timeline.set_position(pos)
         self.time_label.setText(f"{format_time(pos)} / {format_time(self.player.duration() / 1000)}")
+        self._refresh_overlay_view(pos)
 
     def _refresh_play_button(self):
         playing = self.player.playbackState() == QMediaPlayer.PlayingState
@@ -951,8 +979,19 @@ class MainWindow(QMainWindow):
             return
         self.save_now()
         _, crf, cq = QUALITIES[self.settings.quality]
-        dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self, crf=crf, cq=cq)
+        work = self._overlay_work_folder()
+        try:
+            w, h = overlay_mod.SHORT_FRAME
+            placed = [overlay_mod.prepare(overlay_mod.times_in_clip(self.project.overlays, c), w, h, work)
+                      for c in clips]
+        except OSError as e:
+            shutil.rmtree(work, ignore_errors=True)
+            QMessageBox.warning(self, "Lethal Cuts", f"The text and cards couldn't be got ready for the export:\n{e}")
+            return
+        dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self, crf=crf, cq=cq,
+                              placed=placed)
         dialog.exec()
+        shutil.rmtree(work, ignore_errors=True)
         for i, file in enumerate(dialog.files):  # the files come back in clip order
             clip = dialog.clips[i]
             self.library.add(file, clip.name or f"Clip {i + 1}", self.project.video_path, clip.length)
@@ -980,10 +1019,20 @@ class MainWindow(QMainWindow):
         length = kept_length(cuts, duration)
         _, crf, cq = QUALITIES[self.settings.quality]
         folder = long_videos_folder(self.settings)
-        worker = LongExportWorker(video, cuts, duration, folder, self.settings.long_size, crf, cq)
+        work = self._overlay_work_folder()
+        try:
+            w, h = self._overlay_frame_size(long=True, exact=True)
+            timed = overlay_mod.times_in_long(self.project.long_overlays, kept_pieces(cuts, duration))
+            placed = overlay_mod.prepare(timed, w, h, work)
+        except OSError as e:
+            shutil.rmtree(work, ignore_errors=True)
+            QMessageBox.warning(self, "Lethal Cuts", f"The text and cards couldn't be got ready for the export:\n{e}")
+            return
+        worker = LongExportWorker(video, cuts, duration, folder, self.settings.long_size, crf, cq, placed)
         dialog = ExportDialog(video, [], folder, self, worker=worker,
                               title=f"Making the long video ({format_time(length, tenths=False)})...")
         dialog.exec()
+        shutil.rmtree(work, ignore_errors=True)
         for file in dialog.files:
             self.library.add(file, video.stem, video, length, kind="long")
         if dialog.files:
@@ -995,6 +1044,143 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Long video saved in {folder}. It's in the Post tab.")
         if dialog.go_to_post:
             self.show_post()
+
+    @staticmethod
+    def _overlay_work_folder() -> Path:
+        """A temporary folder for the overlay pictures FFmpeg reads during an export (deleted afterwards)."""
+        return Path(tempfile.mkdtemp(prefix="lethal-cuts-overlays-"))
+
+    # --- cards and text on screen ---
+    def overlays(self) -> list[Overlay]:
+        if not self.project:
+            return []
+        return self.project.long_overlays if self.long_mode else self.project.overlays
+
+    def _overlay_frame_size(self, long: bool | None = None, exact: bool = False) -> tuple[int, int]:
+        """The finished video's size in pixels: 1080x1920 for Shorts, the long video's size otherwise."""
+        if not (self.long_mode if long is None else long):
+            return overlay_mod.SHORT_FRAME
+        if exact and self.project:
+            try:
+                info = probe(self.project.video_path)  # the real size, after any phone rotation
+                return overlay_mod.long_frame(info.width, info.height, self.settings.long_size)
+            except ExportError:
+                pass
+        size = self.video.source_size()
+        if size.isEmpty():
+            return 1920, 1080
+        return overlay_mod.long_frame(int(size.width()), int(size.height()), self.settings.long_size)
+
+    def _overlay_crop(self, t: float):
+        """Shorts: the crop box the overlays sit in at this moment. Long videos use the whole picture."""
+        if self.long_mode or not self.project:
+            return None
+        clip = self.preview_clip or next((c for c in self.project.clips if c.start <= t <= c.end), None)
+        if clip is None:
+            index = self.clip_list.selected_index()
+            clip = self.project.clips[index] if 0 <= index < len(self.project.clips) else None
+        crop = (clip.crop if clip else None) or self.project.last_crop
+        return crop or cropmath.default_crop(self.video.aspect())
+
+    def _refresh_overlay_view(self, t: float | None = None):
+        t = self.current_time() if t is None else t
+        playing = self.player.playbackState() == QMediaPlayer.PlayingState
+        bounds = (self.preview_clip.start, self.preview_clip.end) if self.preview_clip else None
+        self.video.set_overlays(self.overlays(), t, self._overlay_crop(t), self._overlay_frame_size(),
+                                self.overlay_panel.selected_index(), not playing, bounds)
+
+    def _refresh_overlays(self, select: int = -1):
+        overlays = self.overlays()
+        self.overlay_panel.set_overlays(overlays, select)
+        self.timeline.set_overlays(overlays, select)
+        self.side_tabs.setTabText(1, f"On screen ({len(overlays)})" if overlays else "On screen")
+        self._refresh_overlay_view()
+
+    def add_text(self):
+        if not self.project:
+            self.statusBar().showMessage("Open a game video first.")
+            return
+        t = self.current_time()
+        duration = self.player.duration() / 1000 or t + overlay_mod.DEFAULT_SECONDS
+        start = max(min(t, duration - overlay_mod.MIN_SECONDS), 0.0)
+        end = min(start + overlay_mod.DEFAULT_SECONDS, duration)
+        o = Overlay("text", round(start, 3), round(end, 3), y=0.15 if self.long_mode else 0.22,
+                    size=0.45 if self.long_mode else 0.6, text="Your text here")
+        overlays = self.overlays()
+        overlays.append(o)
+        overlays.sort(key=lambda x: x.start)
+        index = next(i for i, x in enumerate(overlays) if x is o)
+        self.player.pause()
+        self.side_tabs.setCurrentWidget(self.overlay_panel)
+        self._refresh_overlays(select=index)
+        self.overlay_panel.focus_text()
+        self._changed()
+        self.statusBar().showMessage("Text added. Type the words, drag it on the video to place it, and drag its bar "
+                                     "under the timeline to change when it shows.")
+
+    def _on_overlay_selected(self, index: int):
+        overlays = self.overlays()
+        self.timeline.set_overlays(overlays, index)
+        if 0 <= index < len(overlays):
+            o = overlays[index]
+            if not o.start <= self.current_time() <= o.end:
+                self.seek(o.start + min(overlay_mod.ANIM_SECONDS, o.length / 2))  # where it's fully in
+        self._refresh_overlay_view()
+
+    def _on_overlay_pressed(self, index: int):
+        """Clicked on the video or its timeline bar."""
+        self.side_tabs.setCurrentWidget(self.overlay_panel)
+        self.overlay_panel.select(index)
+        self.timeline.set_overlays(self.overlays(), index)
+
+    def _on_overlay_moved(self, index: int):
+        """Dragged on the video or the timeline."""
+        self.overlay_panel.refresh_row(index)
+        self._refresh_overlay_view()
+        self._changed()
+
+    def _on_overlay_edited(self, index: int):
+        """Changed in the On screen panel."""
+        overlays = self.overlays()
+        duration = self.player.duration() / 1000
+        if 0 <= index < len(overlays) and duration and overlays[index].end > duration:
+            overlays[index].end = duration
+            self.overlay_panel.refresh_row(index)
+        self.timeline.update()
+        self._refresh_overlay_view()
+        self._changed()
+
+    def _jump_to_overlay(self, index: int):
+        overlays = self.overlays()
+        if 0 <= index < len(overlays):
+            self.player.pause()
+            self.seek(overlays[index].start + min(overlay_mod.ANIM_SECONDS, overlays[index].length / 2))
+
+    def delete_overlay(self, index: int):
+        overlays = self.overlays()
+        if not 0 <= index < len(overlays):
+            return
+        o = overlays.pop(index)
+        self.last_deleted_overlay = (self.long_mode, o)
+        self._undo_overlay = True
+        self._refresh_overlays()
+        self._changed()
+        self.statusBar().showMessage(f"{overlay_mod.describe(o)} deleted. Press Ctrl+Z to bring it back.")
+
+    def undo_delete_overlay(self):
+        if not self.project or self.last_deleted_overlay is None:
+            return
+        long, o = self.last_deleted_overlay
+        self.last_deleted_overlay = None
+        self._undo_overlay = False
+        self.set_mode(long)
+        overlays = self.overlays()
+        overlays.append(o)
+        overlays.sort(key=lambda x: x.start)
+        self.side_tabs.setCurrentWidget(self.overlay_panel)
+        self._refresh_overlays(select=next(i for i, x in enumerate(overlays) if x is o))
+        self._changed()
+        self.statusBar().showMessage(f"{overlay_mod.describe(o)} restored.")
 
     def _confirm_export_tips(self) -> bool:
         tips = [t for i in range(len(self.project.clips)) for t in self._clip_tips(i)]
@@ -1073,6 +1259,7 @@ class MainWindow(QMainWindow):
         self.long_mode = long
         self.timeline.cut_style = long
         self.list_title.setText("Cuts" if long else "Clips")
+        self.side_tabs.setTabText(0, "Cuts" if long else "Clips")
         self.list_help.help_text = HELP["cuts" if long else "clips"]
         self.clip_list.setVisible(not long)
         self.cut_list.setVisible(long)
@@ -1086,6 +1273,7 @@ class MainWindow(QMainWindow):
         self.preview_help.help_text = HELP["preview_long" if long else "preview"]
         self._refresh_mode_labels()
         self._refresh_clips()
+        self._refresh_overlays()
         self.statusBar().showMessage(
             "Making a long video: press I and O around the dead stretches to cut them out." if long
             else "Making Shorts: press I and O around the best moments.")
@@ -1150,17 +1338,24 @@ class MainWindow(QMainWindow):
             self._refresh_tips()
 
     def delete_selected(self):
+        if self.side_tabs.currentWidget() is self.overlay_panel:
+            self.delete_overlay(self.overlay_panel.selected_index())
+            return
         index = self.active_list().selected_index()
         if not self.project or index < 0:
             return
         self.stop_preview()
         self.last_deleted = (self.long_mode, self.items().pop(index))
+        self._undo_overlay = False
         self._refresh_clips()
         self._changed()
         word = "Cut" if self.long_mode else "Clip"
         self.statusBar().showMessage(f"{word} {index + 1} deleted. Press Ctrl+Z to bring it back.")
 
     def undo_delete(self):
+        if self._undo_overlay:
+            self.undo_delete_overlay()
+            return
         if not self.project or self.last_deleted is None:
             return
         was_cut, item = self.last_deleted

@@ -19,9 +19,10 @@ class ExportWorker(QObject):
     finished = Signal(list, str, bool)   # finished file paths, error message, cancelled
 
     def __init__(self, video: Path, clips: list[Clip], folder: Path, crf: int = export.X264_QUALITY,
-                 cq: int = export.NVENC_QUALITY):
+                 cq: int = export.NVENC_QUALITY, placed: list[list] | None = None):
         super().__init__()
         self.video, self.clips, self.folder = video, clips, folder
+        self.placed = placed or [[] for _ in clips]  # each clip's overlays (overlays.Placed)
         self.crf, self.cq = crf, cq
         self.encoder_label = ""
         self._cancelled = False
@@ -54,10 +55,10 @@ class ExportWorker(QObject):
                 final = self.folder / export.output_name(i + 1, clip)
                 temp = final.with_name(final.stem + ".partial.mp4")  # never mistaken for a finished clip
                 report = lambda p, d=done, c=clip, l=label: self.progress.emit((d + p * c.length) / total, l)
-                code, log = self._encode(clip, info, measured, temp, gpu, report)
+                code, log = self._encode(clip, info, measured, temp, gpu, report, self.placed[i])
                 if code != 0 and gpu and not self._cancelled:
                     gpu = False  # the graphics card failed: switch to the processor for the rest
-                    code, log = self._encode(clip, info, measured, temp, gpu, report)
+                    code, log = self._encode(clip, info, measured, temp, gpu, report, self.placed[i])
                 if self._cancelled:
                     break
                 if code != 0:
@@ -77,15 +78,16 @@ class ExportWorker(QObject):
                 except OSError:
                     pass
 
-    def _encode(self, clip, info, measured, out, gpu, report):
+    def _encode(self, clip, info, measured, out, gpu, report, placed=None):
         self.encoder_label = "graphics card" if gpu else "processor"
-        args = export.encode_args(self.video, clip, info, measured, out, gpu, self.crf, self.cq)
+        args = export.encode_args(self.video, clip, info, measured, out, gpu, self.crf, self.cq, placed)
         return export.run_encode(args, clip.length, report, self._register)
 
 
 class ExportDialog(QDialog):
     def __init__(self, video: Path, clips: list[Clip], folder: Path, parent=None,
-                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY, worker=None, title: str = ""):
+                 crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY, worker=None, title: str = "",
+                 placed: list[list] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Exporting clips")
         self.setModal(True)
@@ -134,7 +136,7 @@ class ExportDialog(QDialog):
 
         # Each clip is its own copy, so nothing changes under the export while it runs.
         self.clips = [replace(c) for c in clips]
-        self.worker = worker or ExportWorker(video, self.clips, folder, crf, cq)
+        self.worker = worker or ExportWorker(video, self.clips, folder, crf, cq, placed)
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
