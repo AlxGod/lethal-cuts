@@ -84,6 +84,38 @@ MAKING A LONG VIDEO
 Your Shorts clips and your cuts are kept separately, so you can make both from
 the same recording.
 
+
+CARDS AND TEXT ON SCREEN
+------------------------
+The Editor's "On screen" tab (next to Clips) puts a card or words on the video.
+What you see in the Editor is exactly what gets exported.
+
+Adding a card:
+1. Move the playhead to where the card should pop up and click "+ Card".
+2. Type the card's name and click it in the suggestions. Every Magic card is
+   there (from Scryfall, the free card database), not just your decks.
+3. Pick the right printing. Every printing shows, newest first, with its set
+   code, number and year under it. Type in "Find a printing" to narrow it down
+   (e.g. "Commander Masters", "CMM" or "2023"). The set code and number are on
+   the bottom left of the real card, so you can match the one in your hand.
+4. Double-faced card? "Show the other side" picks which side shows.
+5. Click "Add to video" (or double-click the artwork). It shows for 5 seconds.
+
+My decks (optional): in the card window, click "New deck" and paste one of your
+decklists. Export it from Moxfield or Archidekt with the set codes, and each card
+opens on the exact printing you own. Then its cards are one click away.
+
+Adding text: move the playhead there, click "+ Text" and type the words.
+
+Placing and timing:
+- Drag it on the video to move it. Drag its gold corner, use the Size slider or
+  scroll the mouse wheel over it to resize it.
+- Its bar in the strip under the timeline sets when it shows: drag the bar to
+  move it, or drag an end to make it show longer or shorter.
+- "Comes in" and "Goes away" pick Pop, Fade, Slide or None.
+- Delete key removes it; Ctrl+Z brings it back.
+Each picture downloads once and is kept, so a card you've used works offline.
+
 How long can a video be?
 - YouTube Shorts: up to 3 minutes.
 - YouTube videos: up to 15 minutes, until the account verifies a phone number

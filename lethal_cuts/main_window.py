@@ -612,10 +612,14 @@ class MainWindow(QMainWindow):
              f"Press {s.key('preview')} to see exactly how the phone video will look."),
             (self.export_btn, "7. Export",
              "Export all clips makes each one a ready-to-post vertical video with the volume evened out."),
-            (self.long_mode_btn, "8. Long videos too",
+            (self.side_tabs.tabBar(), "8. Cards and text on screen",
+             "The On screen tab puts a card or text on the video. + Card searches every Magic card: pick the printing "
+             "that matches yours, and it pops up at the playhead. Drag it on the video to place it, and drag its bar "
+             "under the timeline to time it. The Guide explains it all."),
+            (self.long_mode_btn, "9. Long videos too",
              "Switch to Long video to make one normal widescreen video of the whole game instead. "
              "I and O then mark the dead stretches to cut out, and everything else stays in."),
-            (self.tabs.tabBar(), "9. Post them one at a time",
+            (self.tabs.tabBar(), "10. Post them one at a time",
              "The Post tab keeps every finished clip from every game. Watch them, post the best one to YouTube or "
              "TikTok, and tick it off. Posted clips move to their own list, so you always know what's left."),
             (self.tabs.tabBar(), "Need help later?",
@@ -1161,7 +1165,7 @@ class MainWindow(QMainWindow):
             return
         o = overlays[index]
         self.player.pause()
-        picker = CardPicker(self, start_name=(o.card or {}).get("name", ""))
+        picker = CardPicker(self, start_name=(o.card or {}).get("name", ""), start_id=(o.card or {}).get("id", ""))
         if picker.exec() and picker.card:
             o.card = picker.card
             self._refresh_overlays(select=index)

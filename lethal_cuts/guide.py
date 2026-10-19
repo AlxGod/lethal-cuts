@@ -87,6 +87,43 @@ at youtube.com/verify), then up to 12 hours. TikTok takes up to 60 minutes. Leth
 over a limit; once the YouTube account is verified, click <i>It's verified, stop telling me</i>.</p>
 """
 
+ON_SCREEN = """
+<a name="onscreen"></a><h2>Cards and text on screen</h2>
+<p>Pop a card up while you talk about it, or put words on the video. Both work on Shorts and long videos, and what you see in the
+Editor is exactly what gets exported. Find them in the Editor's <i>On screen</i> tab (next to <i>Clips</i>).</p>
+<p><b>Adding a card</b></p>
+<ol>
+<li>Move the playhead to where the card should appear, then click <i>+ Card</i>.</li>
+<li>Type the card's name. Suggestions appear after two letters: click the right one (or press Enter for the closest match).
+Every Magic card is there, not just your decks.</li>
+<li><b>Pick the right printing.</b> Every printing with a picture shows, newest first, with its set code, number and year
+under it (hover for the set's full name). Type in the <i>Find a printing</i> box to narrow it down, e.g. <i>Commander Masters</i>,
+<i>CMM</i> or <i>2023</i>. The set code and number are printed on the bottom left of the real card, so you can match it to the
+one in your hand. The big picture on the right shows exactly what goes on the video.</li>
+<li>Double-faced card? Click <i>Show the other side</i> to pick which side shows.</li>
+<li>Click <i>Add to video</i> (or double-click the artwork). The card shows for 5 seconds.</li>
+</ol>
+<p><b>My decks (optional).</b> Paste your own decklists once (click <i>New deck</i> in the card window) and their cards are a click
+away from then on. Export the list from Moxfield or Archidekt and keep the set codes in it: then each card opens straight on the
+exact printing you own. Lists typed one card per line work too. Other people's decks aren't needed: search finds any card.</p>
+<p><b>Adding text.</b> Move the playhead there and click <i>+ Text</i>, then type the words in the <i>Selected</i> box.
+It shows for 4 seconds.</p>
+<p><b>Placing and timing them</b></p>
+<ul>
+<li><b>Where:</b> drag it on the video. Drag its gold corner, use the <i>Size</i> slider, or scroll the mouse wheel over it to resize.
+On Shorts it sits inside the tall crop box, so you see exactly where it lands on the phone video.</li>
+<li><b>When:</b> each one has a bar in the strip under the timeline. Drag the bar to move it; drag either end to make it show
+longer or shorter. <i>Shows for</i> sets the length in seconds.</li>
+<li><b>How it moves:</b> <i>Comes in</i> and <i>Goes away</i> pick Pop, Fade, Slide or None.</li>
+<li><b>Changing a card:</b> pick it and click <i>Change card...</i> to swap the card or the printing.</li>
+<li><b>Deleting:</b> pick it and press Delete (or the Delete button). Ctrl+Z brings it back.</li>
+</ul>
+<p>Shorts and the long video each keep their own cards and text. A card added while making Shorts appears in any clip that
+covers that moment. In a long video, one that runs into a cut just ends where the cut starts.</p>
+<p>Card pictures come from Scryfall, the free card database, and each one is downloaded once and kept, so searching needs the
+internet but a card you've used before works offline.</p>
+"""
+
 SHORTS = """
 <a name="shorts"></a><h2>Shorts tips</h2>
 <ul>
@@ -136,8 +173,9 @@ class GuidePage(QWidget):
         rows += '<tr><td><span class="key">&nbsp;F2&nbsp;</span></td><td>Rename the selected clip</td></tr>'
         hotkeys = f'<a name="hotkeys"></a><h2>Hotkey cheat sheet</h2><p>Change any of these in Settings.</p><table>{rows}</table>'
         contents = ('<p><a href="#recording">Recording tips</a> &nbsp;|&nbsp; <a href="#steps">Step by step</a>'
-                    ' &nbsp;|&nbsp; <a href="#long">Long videos</a> &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a>'
+                    ' &nbsp;|&nbsp; <a href="#long">Long videos</a> &nbsp;|&nbsp; <a href="#onscreen">Cards and text</a>'
+                    ' &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a>'
                     ' &nbsp;|&nbsp; <a href="#shorts">Shorts tips</a></p>')
         html = (f"<h1>How to use Lethal Cuts</h1>{contents}{RECORDING}"
-                f"{STEPS.format(**keys)}{LONG.format(**keys)}{hotkeys}{SHORTS}")
+                f"{STEPS.format(**keys)}{LONG.format(**keys)}{ON_SCREEN}{hotkeys}{SHORTS}")
         self.browser.setHtml(html)

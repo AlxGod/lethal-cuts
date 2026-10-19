@@ -252,22 +252,41 @@ def download_picture(url: str, path: Path) -> Path:
 
 
 # --- decklists ---
-def parse_decklist(text: str) -> list[str]:
-    """Card names from a pasted decklist ("1 Sol Ring", "1x Sol Ring (CMM) 400 *F*", or just "Sol Ring")."""
-    names, seen = [], set()
+def parse_deck_entries(text: str) -> list[tuple[str, str, str]]:
+    """(name, set code, collector number) for each card in a pasted decklist. Moxfield and Archidekt
+    lists say which printing ("1 Sol Ring (CMM) 400 *F*"); typed lists ("Sol Ring") leave those blank."""
+    entries, seen = [], set()
     for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith(("#", "//")):
             continue
-        line = re.sub(r"^\d+\s*x?\s+", "", line, flags=re.I)          # the count
-        line = re.sub(r"\s+\([A-Za-z0-9]{2,6}\)(\s+\S+)?.*$", "", line)  # (SET) 123 *F*
+        line = re.sub(r"^\d+\s*x?\s+", "", line, flags=re.I)  # the count
+        set_code = number = ""
+        printing = re.search(r"\s+[(\[]([A-Za-z0-9]{2,6})[)\]](?:\s+([A-Za-z0-9\-\u2605]+))?.*$", line)
+        if printing:
+            set_code, number = printing.group(1).lower(), (printing.group(2) or "")
+            line = line[:printing.start()]
         line = re.sub(r"\s+\*[A-Z]+\*$", "", line).strip()
         if not line or line.rstrip(":").lower() in DECK_HEADERS:
             continue
         if line.lower() not in seen:
             seen.add(line.lower())
-            names.append(line)
-    return names
+            entries.append((line, set_code, number))
+    return entries
+
+
+def parse_decklist(text: str) -> list[str]:
+    """Just the card names from a pasted decklist."""
+    return [name for name, _, _ in parse_deck_entries(text)]
+
+
+def deck_text(deck: dict) -> str:
+    """A deck written back out one card per line, keeping its printings, for editing."""
+    lines = []
+    for name in deck["cards"]:
+        set_code, number = deck.get("printings", {}).get(name.lower(), ["", ""])
+        lines.append(f"{name} ({set_code.upper()}) {number}".rstrip() if set_code else name)
+    return "\n".join(lines)
 
 
 def decks_path() -> Path:
@@ -278,7 +297,9 @@ def load_decks() -> list[dict]:
     """His own decks: [{"name": ..., "cards": [...]}]."""
     try:
         data = json.loads(decks_path().read_text(encoding="utf-8"))
-        return [{"name": str(d["name"]), "cards": [str(c) for c in d.get("cards", [])]} for d in data.get("decks", [])]
+        return [{"name": str(d["name"]), "cards": [str(c) for c in d.get("cards", [])],
+                 "printings": {str(k): [str(v[0]), str(v[1])] for k, v in d.get("printings", {}).items()}}
+                for d in data.get("decks", [])]
     except (OSError, ValueError, KeyError, TypeError):
         return []
 

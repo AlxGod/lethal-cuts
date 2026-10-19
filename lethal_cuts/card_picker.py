@@ -13,6 +13,7 @@ from . import scryfall
 from .help import HELP, HelpButton
 
 THUMB = QSize(98, 137)
+LABEL_HEIGHT = 30   # set and year under each printing
 PREVIEW_W = 250
 SEARCH_DELAY = 300  # ms after the last key press before asking Scryfall
 
@@ -26,15 +27,17 @@ def _blank_icon() -> QIcon:
 class DeckDialog(QDialog):
     """Paste a decklist (from Moxfield, Archidekt, or typed one card per line)."""
 
-    def __init__(self, parent=None, name: str = "", cards: list[str] | None = None):
+    def __init__(self, parent=None, name: str = "", text: str = ""):
         super().__init__(parent)
         self.setWindowTitle("My deck")
         self.setMinimumSize(420, 480)
         self.name_edit = QLineEdit(name)
         self.name_edit.setPlaceholderText("Deck name, e.g. Atraxa Superfriends")
-        self.list_edit = QPlainTextEdit("\n".join(cards or []))
-        self.list_edit.setPlaceholderText("Paste the decklist here, one card per line:\n\n1 Sol Ring\n1 Atraxa, "
-                                          "Praetors' Voice\n...\n\nCounts and set codes are fine; they're ignored.")
+        self.list_edit = QPlainTextEdit(text)
+        self.list_edit.setPlaceholderText("Paste the decklist here, one card per line:\n\n1 Sol Ring (CMM) 400\n"
+                                          "1 Atraxa, Praetors' Voice\n...\n\nExported from Moxfield or Archidekt? "
+                                          "Their set codes and numbers are kept, so each card opens on the exact "
+                                          "printing you own.")
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
@@ -54,12 +57,14 @@ class DeckDialog(QDialog):
             return
         self.accept()
 
-    def result_deck(self) -> tuple[str, list[str]]:
-        return self.name_edit.text().strip(), scryfall.parse_decklist(self.list_edit.toPlainText())
+    def result_deck(self) -> tuple[str, list[str], dict]:
+        entries = scryfall.parse_deck_entries(self.list_edit.toPlainText())
+        printings = {name.lower(): [s, n] for name, s, n in entries if s}
+        return self.name_edit.text().strip(), [name for name, _, _ in entries], printings
 
 
 class CardPicker(QDialog):
-    def __init__(self, parent=None, start_name: str = ""):
+    def __init__(self, parent=None, start_name: str = "", start_id: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Add a card")
         self.resize(980, 640)
@@ -74,7 +79,8 @@ class CardPicker(QDialog):
         self._printings: list[scryfall.Printing] = []
         self._face = 0
         self._add_when_ready = False
-        self._pending_deck: tuple[str, list[str], int] | None = None  # (name, cards, index or -1 for new)
+        self._pending_deck: tuple | None = None  # (name, cards, printings, index or -1 for new)
+        self._prefer: tuple[str, str, str] = ("", "", "")  # (printing id, set code, number) to open on
         self.decks = scryfall.load_decks()
 
         # Left: search, then My decks
@@ -102,7 +108,7 @@ class CardPicker(QDialog):
         deck_buttons.addWidget(self.delete_deck_btn)
         deck_buttons.addStretch(1)
         self.deck_cards = QListWidget()
-        self.deck_cards.itemClicked.connect(lambda item: self.choose_name(item.text()))
+        self.deck_cards.itemClicked.connect(self._on_deck_card)
         self.deck_note = QLabel("Optional: save your own decks here so their cards are one click away.")
         self.deck_note.setObjectName("dimLabel")
         self.deck_note.setWordWrap(True)
@@ -133,7 +139,13 @@ class CardPicker(QDialog):
         self.grid = QListWidget()
         self.grid.setViewMode(QListView.IconMode)
         self.grid.setIconSize(THUMB)
-        self.grid.setGridSize(QSize(THUMB.width() + 12, THUMB.height() + 12))
+        self.grid.setGridSize(QSize(THUMB.width() + 16, THUMB.height() + LABEL_HEIGHT + 10))
+        self.grid.setWordWrap(True)
+        self.grid.setTextElideMode(Qt.ElideRight)
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("Find a printing: set name, set code or year (e.g. Commander Masters, CMM, 2023)")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.textChanged.connect(self._apply_filter)
         self.grid.setResizeMode(QListView.Adjust)
         self.grid.setMovement(QListView.Static)
         self.grid.setUniformItemSizes(True)
@@ -158,6 +170,7 @@ class CardPicker(QDialog):
         right.addStretch(1)
         middle = QVBoxLayout()
         middle.addWidget(self.card_title)
+        middle.addWidget(self.filter)
         middle.addWidget(self.grid, 1)
         body = QHBoxLayout()
         body.addWidget(left_box)
@@ -185,7 +198,7 @@ class CardPicker(QDialog):
         self.search.setFocus()
         if start_name:
             self.search.setText(start_name)
-            self.choose_name(start_name)
+            self.choose_name(start_name, (start_id, "", ""))
 
     # --- searching ---
     def _ask_suggestions(self):
@@ -209,9 +222,20 @@ class CardPicker(QDialog):
         elif len(text) >= 2:
             self.choose_name(text)
 
-    def choose_name(self, name: str):
+    def _on_deck_card(self, item):
+        i = self._deck_index()
+        printings = self.decks[i].get("printings", {}) if i >= 0 else {}
+        name = item.text().lower()
+        # Scryfall spells double-faced cards "Front // Back"; the list may have just the front
+        set_code, number = printings.get(name) or printings.get(name.split(" // ")[0]) or ["", ""]
+        self.choose_name(item.text(), ("", set_code, number))
+
+    def choose_name(self, name: str, prefer: tuple[str, str, str] = ("", "", "")):
+        """Shows every printing of a card. prefer = (printing id, set code, number) to start on, if known."""
         self._wanted = name
+        self._prefer = prefer
         self._printings = []
+        self.filter.clear()
         self.grid.clear()
         self.preview.clear()
         self.printing_label.setText("")
@@ -231,13 +255,37 @@ class CardPicker(QDialog):
         self.card_title.setText(f"{found[0].name}: {len(found)} printing{'s' if len(found) != 1 else ''}, newest first")
         blank = _blank_icon()
         for i, p in enumerate(found):
-            item = QListWidgetItem(blank, "")
+            item = QListWidgetItem(blank, f"{p.set_code.upper()} #{p.number}\n{p.year}")
             item.setToolTip(p.label)
+            item.setTextAlignment(Qt.AlignHCenter | Qt.AlignTop)
             self.grid.addItem(item)
             path = scryfall.picture_path(p.id, 0, "small")
             self.loader.load_picture(f"thumb:{i}:{p.id}", p.faces[0].small, path)
-        self.status.setText("Pick the artwork you like, then click Add to video (or double-click it).")
-        self.grid.setCurrentRow(0)
+        want_id, want_set, want_number = self._prefer
+        row = next((i for i, p in enumerate(found) if want_id and p.id == want_id), -1)
+        if row < 0 and want_set:
+            row = next((i for i, p in enumerate(found) if p.set_code == want_set and
+                        (not want_number or p.number == want_number)), -1)
+        if row >= 0:
+            p = found[row]
+            why = "the one already on the video" if want_id else "the printing from your decklist"
+            self.status.setText(f"Opened on {why}: {p.set_name} ({p.set_code.upper()}) #{p.number}. "
+                                "Pick another to change it.")
+        elif want_set:
+            self.status.setText(f"Your decklist says {want_set.upper()} {want_number}, but Scryfall has no picture of "
+                                "that printing. Pick the one that matches your card.")
+        else:
+            self.status.setText("Pick the artwork that matches your card (hover for the set's full name), then click "
+                                "Add to video (or double-click it).")
+        self.grid.setCurrentRow(max(row, 0))
+        self.grid.scrollToItem(self.grid.currentItem())
+
+    def _apply_filter(self, text: str):
+        """Hides printings that don't match the set name, set code or year typed."""
+        words = text.lower().split()
+        for i, p in enumerate(self._printings):
+            hay = f"{p.set_name} {p.set_code} {p.year} #{p.number}".lower()
+            self.grid.item(i).setHidden(not all(w in hay for w in words))
 
     def _on_printing_picked(self, row: int):
         self._face = 0
@@ -288,9 +336,9 @@ class CardPicker(QDialog):
         self._add_when_ready = False
         if what == "check" and self._pending_deck:
             # Couldn't check the names (no internet?): keep the list as typed
-            name, cards, index = self._pending_deck
+            name, cards, printings, index = self._pending_deck
             self._pending_deck = None
-            self._store_deck(name, cards, index)
+            self._store_deck(name, cards, printings, index)
             message += " The deck was saved as typed."
         elif what == "picture" and self.preview.text() == "Downloading...":
             self.preview.setText("No picture")
@@ -348,22 +396,22 @@ class CardPicker(QDialog):
         i = self._deck_index()
         if i < 0:
             return
-        dialog = DeckDialog(self, self.decks[i]["name"], self.decks[i]["cards"])
+        dialog = DeckDialog(self, self.decks[i]["name"], scryfall.deck_text(self.decks[i]))
         if dialog.exec():
             self._check_deck(*dialog.result_deck(), i)
 
-    def _check_deck(self, name: str, cards: list[str], index: int):
+    def _check_deck(self, name: str, cards: list[str], printings: dict, index: int):
         """Asks Scryfall about the whole list at once (one request per 75 cards) to catch typos."""
-        self._pending_deck = (name, cards, index)
+        self._pending_deck = (name, cards, printings, index)
         self.status.setText(f"Checking the {len(cards)} card names with Scryfall...")
         self.loader.check(cards)
 
     def _on_checked(self, found: list, missing: list):
         if not self._pending_deck:
             return
-        name, cards, index = self._pending_deck
+        name, cards, printings, index = self._pending_deck
         self._pending_deck = None
-        self._store_deck(name, found + missing if missing else found, index)
+        self._store_deck(name, found + missing if missing else found, printings, index)
         if missing:
             were = "names weren't" if len(missing) != 1 else "name wasn't"
             self.status.setText(f"Saved {name}. {len(missing)} {were} found on Scryfall (check the spelling with "
@@ -372,8 +420,8 @@ class CardPicker(QDialog):
         else:
             self.status.setText(f"Saved {name} ({len(found)} cards).")
 
-    def _store_deck(self, name: str, cards: list[str], index: int):
-        deck = {"name": name, "cards": cards}
+    def _store_deck(self, name: str, cards: list[str], printings: dict, index: int):
+        deck = {"name": name, "cards": cards, "printings": printings}
         if index >= 0:
             self.decks[index] = deck
         else:
