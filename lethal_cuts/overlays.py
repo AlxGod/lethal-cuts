@@ -21,7 +21,8 @@ ANIM_SECONDS = 0.3     # how long coming in or going out takes
 POP_FROM = 0.6         # "pop" grows from this size
 ANIMS = {"none": "None", "fade": "Fade", "pop": "Pop", "slide": "Slide in from the side"}
 ANIMS_OUT = {"none": "None", "fade": "Fade", "pop": "Pop", "slide": "Slide out to the side"}
-DEFAULT_SECONDS = 4.0
+DEFAULT_SECONDS = 4.0  # text
+CARD_SECONDS = 5.0
 MIN_SECONDS = 0.5
 MIN_SIZE, MAX_SIZE = 0.1, 1.0
 TEXT_FONT = "Segoe UI"
@@ -49,6 +50,11 @@ def describe(o: Overlay) -> str:
 
 # --- drawing ---
 _cache: dict[tuple, QImage] = {}
+
+
+def forget_pictures() -> None:
+    """Draws everything fresh next time (a card picture finished downloading)."""
+    _cache.clear()
 
 
 def _key(o: Overlay, w: int, h: int) -> tuple:

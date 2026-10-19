@@ -20,12 +20,20 @@ HELP = {
                 "the bar. The bar under it slides along; Shift + wheel does too. Double-click the timeline to see "
                 "the whole game again.\n\n"
                 "Gold flags are moments marked while recording.",
-    "overlays": "Cards and text shown on top of the video. + Text puts text where the playhead is, for 4 seconds. "
+    "overlays": "Cards and text shown on top of the video. + Card searches every Magic card and puts the one you "
+                "pick where the playhead is; + Text does the same with words. "
                 "Drag it on the video to place it; drag its corner, use the Size slider or scroll the mouse wheel "
                 "over it to resize it. Its bar in the strip under the timeline sets when it shows: drag the bar to "
                 "move it, or drag either end to make it show longer or shorter.\n\n"
                 "What you see is what gets exported. Shorts and the long video each have their own: text added while "
                 "making Shorts shows in any clip that covers that moment.",
+    "cards": "Type any Magic card's name and pick it from the list. Every printing with a picture shows, newest "
+             "first: click the artwork you want (double-click adds it straight away). Double-faced cards have a "
+             "button to show the other side.\n\n"
+             "My decks is optional: paste your own decklists (from Moxfield, Archidekt, or one card per line) and "
+             "their cards are one click away next time.\n\n"
+             "Card details and pictures come from Scryfall, the free card database. Each picture downloads once and "
+             "is kept, so it works offline after that.",
     "moments": "Moments you marked while recording, by pressing the moment key (F8 unless you changed it) when "
                "something great happened. Each one is a gold flag on the timeline, with the few minutes before it "
                "shaded gold. Moment > (key N) jumps to the start of the next one, so you can watch the lead-up and "

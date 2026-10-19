@@ -20,6 +20,8 @@ KIND_NAMES = {"text": "Text", "card": "Card"}
 
 class OverlayPanel(QWidget):
     add_text = Signal()
+    add_card = Signal()
+    change_card = Signal(int)
     selected = Signal(int)    # row picked in the list, or -1
     edited = Signal(int)      # the picked overlay was changed here (in place)
     delete_requested = Signal(int)
@@ -33,12 +35,16 @@ class OverlayPanel(QWidget):
         self.add_text_btn = QPushButton("+ Text")
         self.add_text_btn.setToolTip("Put text on the video at the playhead")
         self.add_text_btn.clicked.connect(self.add_text.emit)
+        self.add_card_btn = QPushButton("+ Card")
+        self.add_card_btn.setToolTip("Search every Magic card and put one on the video at the playhead")
+        self.add_card_btn.clicked.connect(self.add_card.emit)
         add_row = QHBoxLayout()
+        add_row.addWidget(self.add_card_btn)
         add_row.addWidget(self.add_text_btn)
         add_row.addStretch(1)
         add_row.addWidget(HelpButton(HELP["overlays"]))
 
-        self.empty_note = QLabel("Add text at the playhead, then drag it on the video to place it. "
+        self.empty_note = QLabel("Add a card or text at the playhead, then drag it on the video to place it. "
                                  "Its bar under the timeline sets when it shows.")
         self.empty_note.setObjectName("dimLabel")
         self.empty_note.setWordWrap(True)
@@ -65,6 +71,16 @@ class OverlayPanel(QWidget):
         self.text_edit.textChanged.connect(self._on_text)
         self.text_label = QLabel("Text")
         form.addRow(self.text_label, self.text_edit)
+        self.card_name = QLabel()
+        self.card_name.setWordWrap(True)
+        self.change_card_btn = QPushButton("Change card...")
+        self.change_card_btn.setToolTip("Pick another card or another printing of this one")
+        self.change_card_btn.clicked.connect(lambda: self.change_card.emit(self.selected_index()))
+        card_row = QHBoxLayout()
+        card_row.addWidget(self.card_name, 1)
+        card_row.addWidget(self.change_card_btn)
+        self.card_label = QLabel("Card")
+        form.addRow(self.card_label, card_row)
         self.length_spin = QDoubleSpinBox()
         self.length_spin.setRange(ov.MIN_SECONDS, 3600)
         self.length_spin.setSingleStep(0.5)
@@ -164,6 +180,11 @@ class OverlayPanel(QWidget):
         is_text = o is None or o.kind == "text"
         self.text_label.setVisible(is_text)
         self.text_edit.setVisible(is_text)
+        for w in (self.card_label, self.card_name, self.change_card_btn):
+            w.setVisible(not is_text)
+        if o is not None and not is_text:
+            card = o.card or {}
+            self.card_name.setText(f"{card.get('name', 'Card')}\n{card.get('set_name', '')} #{card.get('number', '')}")
         if o is None:
             self.text_edit.setPlainText("")
         else:

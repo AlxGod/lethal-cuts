@@ -34,6 +34,8 @@ from .settings import QUALITIES, Settings
 from .post_page import PostPage
 from .record_page import RecordPage
 from .settings_page import SettingsPage
+from . import scryfall
+from .card_picker import CardPicker
 from .overlay_panel import OverlayPanel
 from .project import Clip, Overlay, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
@@ -336,6 +338,11 @@ class MainWindow(QMainWindow):
         # Cards and text on top of the video
         self.overlay_panel = OverlayPanel()
         self.overlay_panel.add_text.connect(self.add_text)
+        self.overlay_panel.add_card.connect(self.add_card)
+        self.overlay_panel.change_card.connect(self.change_card)
+        # Fetches card pictures that went missing (a project from another PC, or a cleared cache)
+        self.card_loader = scryfall.Loader(self)
+        self.card_loader.picture_ready.connect(self._on_card_picture)
         self.overlay_panel.selected.connect(self._on_overlay_selected)
         self.overlay_panel.edited.connect(self._on_overlay_edited)
         self.overlay_panel.delete_requested.connect(self.delete_overlay)
@@ -680,6 +687,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Lethal Cuts - {path.name}")
         self._refresh_clips()
         self._refresh_overlays()
+        self._fetch_missing_cards()
         self._refresh_moments()
         n, cuts = len(self.project.clips), len(self.project.cuts)
         saved = [f"{n} clip{'s' if n != 1 else ''}"] if n else []
@@ -977,6 +985,8 @@ class MainWindow(QMainWindow):
         self.player.pause()
         if self.settings.nudges and not self._confirm_export_tips():
             return
+        if not self._missing_pictures_ok(self.project.overlays):
+            return
         self.save_now()
         _, crf, cq = QUALITIES[self.settings.quality]
         work = self._overlay_work_folder()
@@ -1013,6 +1023,8 @@ class MainWindow(QMainWindow):
             return
         self.stop_preview()
         self.player.pause()
+        if not self._missing_pictures_ok(self.project.long_overlays):
+            return
         self.save_now()
         video = self.project.video_path
         cuts = [replace(c) for c in self.project.cuts]
@@ -1117,6 +1129,69 @@ class MainWindow(QMainWindow):
         self._changed()
         self.statusBar().showMessage("Text added. Type the words, drag it on the video to place it, and drag its bar "
                                      "under the timeline to change when it shows.")
+
+    def add_card(self):
+        if not self.project:
+            self.statusBar().showMessage("Open a game video first.")
+            return
+        self.player.pause()
+        picker = CardPicker(self)
+        if not picker.exec() or not picker.card:
+            return
+        t = self.current_time()
+        duration = self.player.duration() / 1000 or t + overlay_mod.CARD_SECONDS
+        start = max(min(t, duration - overlay_mod.MIN_SECONDS), 0.0)
+        end = min(start + overlay_mod.CARD_SECONDS, duration)
+        if self.long_mode:
+            o = Overlay("card", round(start, 3), round(end, 3), x=0.86, y=0.5, size=0.22, card=picker.card)
+        else:
+            o = Overlay("card", round(start, 3), round(end, 3), x=0.5, y=0.45, size=0.55, card=picker.card)
+        overlays = self.overlays()
+        overlays.append(o)
+        overlays.sort(key=lambda x: x.start)
+        self.side_tabs.setCurrentWidget(self.overlay_panel)
+        self._refresh_overlays(select=next(i for i, x in enumerate(overlays) if x is o))
+        self._changed()
+        self.statusBar().showMessage(f"{picker.card['name']} added. Drag it on the video to place it, and drag its bar "
+                                     "under the timeline to change when it shows.")
+
+    def change_card(self, index: int):
+        overlays = self.overlays()
+        if not 0 <= index < len(overlays) or overlays[index].kind != "card":
+            return
+        o = overlays[index]
+        self.player.pause()
+        picker = CardPicker(self, start_name=(o.card or {}).get("name", ""))
+        if picker.exec() and picker.card:
+            o.card = picker.card
+            self._refresh_overlays(select=index)
+            self._changed()
+
+    def _fetch_missing_cards(self):
+        if not self.project:
+            return
+        for o in self.project.overlays + self.project.long_overlays:
+            card = o.card or {}
+            if o.kind == "card" and card.get("image") and not Path(card["image"]).exists() and card.get("large_url"):
+                path = scryfall.picture_path(card.get("id", "card"), int(card.get("face", 0)), "large")
+                card["image"] = str(path)
+                self.card_loader.load_picture(f"big:{card.get('id', '')}:{card.get('face', 0)}", card["large_url"], path)
+
+    def _on_card_picture(self, key: str, path: str):
+        overlay_mod.forget_pictures()  # draw it again with the real picture
+        self._refresh_overlay_view()
+        self._changed()
+
+    def _missing_pictures_ok(self, overlays: list[Overlay]) -> bool:
+        missing = [o for o in overlays if o.kind == "card" and not Path((o.card or {}).get("image", "")).exists()]
+        if not missing:
+            return True
+        names = ", ".join(overlay_mod.describe(o) for o in missing[:5])
+        answer = QMessageBox.question(
+            self, "Card pictures missing",
+            f"The pictures for {names} aren't downloaded (no internet?). They'd show as plain name cards.\n\n"
+            "Export anyway?")
+        return answer == QMessageBox.Yes
 
     def _on_overlay_selected(self, index: int):
         overlays = self.overlays()
