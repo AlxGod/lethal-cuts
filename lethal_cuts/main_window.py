@@ -421,11 +421,20 @@ class MainWindow(QMainWindow):
         self._update_thread = QThread(self)
         self._checker.moveToThread(self._update_thread)
         self._update_thread.started.connect(self._checker.run)
-        self._checker.found.connect(lambda update: self._on_update_found(update, manual))
-        self._checker.failed.connect(lambda error: self._on_update_failed(error, manual))
+        self._manual_check = manual
+        # Connected to the window's own methods (not lambdas), so Qt runs them on the window's thread.
+        # A lambda would run on the checking thread, and touching the window from there freezes it.
+        self._checker.found.connect(self._on_checker_found)
+        self._checker.failed.connect(self._on_checker_failed)
         self._checker.found.connect(self._update_thread.quit)
         self._checker.failed.connect(self._update_thread.quit)
         self._update_thread.start()
+
+    def _on_checker_found(self, update):
+        self._on_update_found(update, self._manual_check)
+
+    def _on_checker_failed(self, error: str):
+        self._on_update_failed(error, self._manual_check)
 
     def _on_update_found(self, update, manual: bool):
         self.available_update = update

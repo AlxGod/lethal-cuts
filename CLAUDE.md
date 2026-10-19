@@ -1,6 +1,6 @@
 # Lethal Cuts
 
-A Windows program for Magic Commander game recordings: iPhone .mov (HEVC) from in-person games, or OBS recordings of Tabletop Simulator games. It makes vertical 9:16 clips for YouTube Shorts and TikTok, and long widescreen videos with the dead stretches cut out. The full feature plan is the Google Doc "Lethal Cuts – Build Plan". It is built in steps, each tested and signed off before the next. Version 0.4.1 has Phase 1 (the core clipper), the Post tab, long videos, the Record tab, a chosen save folder, the Update button, and help for 3-hour games (moment key, timeline zoom, free-space check, upload-length warnings). Phase 2 (clicker and "clip that" markers, captions, card pop-ups, hook text) and Phase 3 (reaction cam) come once the friend has used it on real games. `README.txt` is the plain-English guide for the friend. The code is on GitHub (public, because the Update button downloads from its Releases): https://github.com/AlxGod/lethal-cuts
+A Windows program for Magic Commander game recordings: iPhone .mov (HEVC) from in-person games, or OBS recordings of Tabletop Simulator games. It makes vertical 9:16 clips for YouTube Shorts and TikTok, and long widescreen videos with the dead stretches cut out. The full feature plan is the Google Doc "Lethal Cuts – Build Plan". It is built in steps, each tested and signed off before the next. Version 0.4.2 has Phase 1 (the core clipper), the Post tab, long videos, the Record tab, a chosen save folder, the Update button, and help for 3-hour games (moment key, timeline zoom, free-space check, upload-length warnings). Phase 2 (clicker and "clip that" markers, captions, card pop-ups, hook text) and Phase 3 (reaction cam) come once the friend has used it on real games. `README.txt` is the plain-English guide for the friend. The code is on GitHub (public, because the Update button downloads from its Releases): https://github.com/AlxGod/lethal-cuts
 
 ## How it's organized
 
@@ -35,6 +35,8 @@ A Windows program for Magic Commander game recordings: iPhone .mov (HEVC) from i
 - On Alex's PC (GTX 1080 Ti), FFmpeg's NVENC fails with this build, so exports use the CPU (about 1.3 s per second of busy 4K). OBS's own NVENC does work there. The friend's RTX 5070 should use NVENC for both.
 
 ## Qt player gotchas
+
+- Signals from a worker thread must connect to a bound method of a QObject on the main thread, never a lambda: PySide runs a lambda on the emitting thread, and touching widgets there froze the window (0.4.0/0.4.1 hung on start whenever an update existed).
 
 - `QGraphicsVideoItem.nativeSize()` stays empty with the FFmpeg backend. Use `video_item.videoSink().videoSize()`, and its `videoSizeChanged` signal.
 - `boundingRect()` is the whole item, not the letterboxed picture. `VideoView.video_rect()` works out the real picture area.
