@@ -36,6 +36,14 @@ HELP = {
              "their cards are one click away next time.\n\n"
              "Card details and pictures come from Scryfall, the free card database. Each picture downloads once and "
              "is kept, so it works offline after that.",
+    "join": "How the long video joins up where this dead stretch is cut out:\n\n"
+            "Hard cut: straight to the next part (the usual choice, and the default).\n"
+            "Crossfade: the two parts blend into each other for half a second.\n"
+            "Dip to black: fades to black and back, good for a big jump in time (like between games).\n"
+            "Whip: a quick blurred smear, for energy.\n\n"
+            "Default uses the choice in Settings > Export, so you can change every cut at once. A transition "
+            "overlaps the two parts slightly, so the video gets that much shorter. Press P to see it in the "
+            "preview.",
     "moments": "Moments you marked while recording, by pressing the moment key (F8 unless you changed it) when "
                "something great happened. Each one is a gold flag on the timeline, with the few minutes before it "
                "shaded gold. Moment > (key N) jumps to the start of the next one, so you can watch the lead-up and "

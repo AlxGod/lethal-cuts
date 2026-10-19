@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
     QMessageBox, QPushButton, QScrollBar, QSlider, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -25,7 +25,7 @@ from .folders import default_save_folder, long_videos_folder, save_folder, short
 from . import __version__
 from .export_dialog import ExportDialog
 from .guide import GuidePage
-from .long_export import LongExportWorker, kept_length, kept_pieces
+from .long_export import TRANSITIONS, LongExportWorker, joins, kept_length, kept_pieces, plan, snap
 from .export import ExportError, probe
 from .help import HELP, HelpButton, with_help
 from .library import Library
@@ -269,6 +269,16 @@ class MainWindow(QMainWindow):
                 grid.addWidget(btn, row, col)
                 self.nudge_buttons.append(btn)
         grid.addWidget(HelpButton(HELP["nudge"]), 0, 4)
+        self.join_label = QLabel("Join")
+        self.join_combo = QComboBox()
+        self.join_combo.setToolTip("How the long video joins up where this stretch is cut out")
+        self.join_combo.activated.connect(self._on_join)
+        self.join_help = HelpButton(HELP["join"])
+        grid.addWidget(self.join_label, 2, 0)
+        grid.addWidget(self.join_combo, 2, 1, 1, 3)
+        grid.addWidget(self.join_help, 2, 4)
+        for w in (self.join_label, self.join_combo, self.join_help):
+            w.hide()
         grid.setColumnStretch(1, 1)
 
         right = QWidget()
@@ -620,7 +630,8 @@ class MainWindow(QMainWindow):
              "under the timeline to time it. The Guide explains it all."),
             (self.long_mode_btn, "9. Long videos too",
              "Switch to Long video to make one normal widescreen video of the whole game instead. "
-             "I and O then mark the dead stretches to cut out, and everything else stays in."),
+             "I and O then mark the dead stretches to cut out, and everything else stays in. Each cut can join up "
+             "with a hard cut, a crossfade, a dip to black or a whip."),
             (self.tabs.tabBar(), "10. Post them one at a time",
              "The Post tab keeps every finished clip from every game. Watch them, post the best one to YouTube or "
              "TikTok, and tick it off. Posted clips move to their own list, so you always know what's left."),
@@ -808,6 +819,9 @@ class MainWindow(QMainWindow):
                         self.stop_preview()
                         self.statusBar().showMessage("That's the end of the long video.")
                     else:
+                        kind = self._join_of(cut)
+                        if kind != "cut":
+                            self.video.start_transition(kind, TRANSITIONS[kind][2] / max(self.player.playbackRate(), 1))
                         self.player.setPosition(int(cut.end * 1000))  # jump over the cut
                     break
         if self.preview_clip and pos >= self.preview_clip.end and self.player.playbackState() == QMediaPlayer.PlayingState:
@@ -1040,13 +1054,15 @@ class MainWindow(QMainWindow):
         work = self._overlay_work_folder()
         try:
             w, h = self._overlay_frame_size(long=True, exact=True)
-            timed = overlay_mod.times_in_long(self.project.long_overlays, kept_pieces(cuts, duration))
+            pieces, overlaps = self.long_timing()
+            timed = overlay_mod.times_in_long(self.project.long_overlays, pieces, overlaps)
             placed = overlay_mod.prepare(timed, w, h, work)
         except OSError as e:
             shutil.rmtree(work, ignore_errors=True)
             QMessageBox.warning(self, "Lethal Cuts", f"The text and cards couldn't be got ready for the export:\n{e}")
             return
-        worker = LongExportWorker(video, cuts, duration, folder, self.settings.long_size, crf, cq, placed)
+        worker = LongExportWorker(video, cuts, duration, folder, self.settings.long_size, crf, cq, placed,
+                                  self.settings.long_transition)
         dialog = ExportDialog(video, [], folder, self, worker=worker,
                               title=f"Making the long video ({format_time(length, tenths=False)})...")
         dialog.exec()
@@ -1309,6 +1325,44 @@ class MainWindow(QMainWindow):
         self._refresh_clips(select=index)
         self._changed()
 
+    # --- how long-video cuts join up ---
+    def _join_of(self, cut: Clip) -> str:
+        return cut.transition or self.settings.long_transition
+
+    def _fill_join(self, cut: Clip):
+        self.join_combo.blockSignals(True)
+        self.join_combo.clear()
+        default = TRANSITIONS.get(self.settings.long_transition, TRANSITIONS["cut"])[0]
+        self.join_combo.addItem(f"Default ({default})", "")
+        for key, (label, _, seconds) in TRANSITIONS.items():
+            self.join_combo.addItem(label + (f" ({seconds:g} s)" if seconds else ""), key)
+        self.join_combo.setCurrentIndex(max(self.join_combo.findData(cut.transition), 0))
+        self.join_combo.blockSignals(False)
+
+    def _on_join(self):
+        index = self.cut_list.selected_index()
+        if not self.project or not self.long_mode or not 0 <= index < len(self.project.cuts):
+            return
+        cut = self.project.cuts[index]
+        cut.transition = self.join_combo.currentData() or ""
+        self._refresh_clips(select=index)
+        self._changed()
+        name = TRANSITIONS.get(self._join_of(cut), TRANSITIONS["cut"])[0]
+        self.statusBar().showMessage(f"Cut {index + 1} now joins with: {name}. Press P to see it in the preview.")
+
+    def long_timing(self) -> tuple[list, list[float]]:
+        """The long video's kept pieces and how much each join's transition overlaps, as the export does it."""
+        duration = self.player.duration() / 1000
+        try:
+            fps = probe(self.project.video_path).fps
+        except ExportError:
+            fps = 30
+        pieces = snap(kept_pieces(self.project.cuts, duration), fps)
+        if not pieces:
+            return pieces, []
+        _, _, overlaps = plan(pieces, joins(self.project.cuts, pieces, self.settings.long_transition), fps)
+        return pieces, overlaps
+
     # --- clip list ---
     def _thumb_for(self, clip: Clip) -> QImage | None:
         image = self.thumbs.get(thumbnail_time(clip.start, clip.length))
@@ -1352,6 +1406,8 @@ class MainWindow(QMainWindow):
         self.long_summary.setVisible(long)
         self._refresh_long_summary()
         self.nudge_box.setTitle("Fine-tune the selected cut" if long else "Fine-tune the selected clip")
+        for w in (self.join_label, self.join_combo, self.join_help):
+            w.setVisible(long)
         self.delete_btn.setText("Delete cut" if long else "Delete clip")
         self.export_btn.setText("Export long video" if long else "Export all clips")
         self.export_help.help_text = HELP["export_long" if long else "export"]
@@ -1391,6 +1447,7 @@ class MainWindow(QMainWindow):
     def _refresh_clips(self, select: int = -1):
         items = self.items()
         if self.long_mode:
+            self.cut_list.default_join = self.settings.long_transition
             self.cut_list.set_cuts(items, select)
         else:
             self.clip_list.set_clips(items, select, self._thumb_for)
@@ -1472,6 +1529,8 @@ class MainWindow(QMainWindow):
             clip = self.items()[index]
             self.start_value.setText(_precise(clip.start))
             self.end_value.setText(_precise(clip.end))
+            if self.long_mode:
+                self._fill_join(clip)
         else:
             self.start_value.setText("-")
             self.end_value.setText("-")

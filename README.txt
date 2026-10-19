@@ -79,8 +79,13 @@ MAKING A LONG VIDEO
 1. Open the video in the Editor and click "Long video" at the top right.
 2. Press I where a dead stretch starts and O where it ends. That part is cut out
    (it shows striped red on the timeline). Mark as many as you like.
-3. Press P to watch it with the cuts skipped, to check that it flows.
-4. Click "Export long video". It's saved in your videos folder under Long videos.
+3. Optional: with a cut picked, "Join" (under the fine-tune buttons) picks how
+   the video joins up there: Hard cut (the usual), Crossfade, Dip to black (good
+   for a big jump in time) or Whip (a quick blurred smear). Settings > Export
+   sets the default for every cut.
+4. Press P to watch it with the cuts skipped, to check that it flows (the joins
+   play in the preview too).
+5. Click "Export long video". It's saved in your videos folder under Long videos.
 Your Shorts clips and your cuts are kept separately, so you can make both from
 the same recording.
 

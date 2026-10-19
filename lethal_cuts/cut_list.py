@@ -4,6 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
 
+from .long_export import TRANSITIONS
 from .project import Clip, format_time
 
 
@@ -12,8 +13,9 @@ class CutList(QTableWidget):
     cut_activated = Signal(int)  # double-clicked: jump there
 
     def __init__(self, parent=None):
-        super().__init__(0, 4, parent)
-        self.setHorizontalHeaderLabels(["#", "Cut from", "To", "Cuts"])
+        super().__init__(0, 5, parent)
+        self.setHorizontalHeaderLabels(["#", "Cut from", "To", "Cuts", "Join"])
+        self.default_join = "cut"  # Settings' choice, for cuts that don't pick their own
         self.verticalHeader().hide()
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -29,8 +31,9 @@ class CutList(QTableWidget):
         self._filling = True
         self.setRowCount(len(cuts))
         for row, cut in enumerate(cuts):
+            join = TRANSITIONS.get(cut.transition or self.default_join, TRANSITIONS["cut"])[0]
             for col, text in enumerate([str(row + 1), format_time(cut.start), format_time(cut.end),
-                                        format_time(cut.length)]):
+                                        format_time(cut.length), join]):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignCenter)
                 self.setItem(row, col, item)

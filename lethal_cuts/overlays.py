@@ -167,16 +167,23 @@ def times_in_clip(overlays: list[Overlay], clip: Clip) -> list[tuple[Overlay, fl
     return found
 
 
-def to_output_time(t: float, pieces: list[tuple[float, float]]) -> float:
-    """A time in the recording, as a time in the long video (the cut parts take no time)."""
-    return sum(min(max(t - a, 0.0), b - a) for a, b in pieces)
+def to_output_time(t: float, pieces: list[tuple[float, float]], overlaps: list[float] | None = None) -> float:
+    """A time in the recording, as a time in the long video (the cut parts take no time).
+    overlaps: seconds each join's transition overlaps the two sides (0 for a hard cut), which
+    pulls everything after it that much earlier."""
+    out = sum(min(max(t - a, 0.0), b - a) for a, b in pieces)
+    for j, d in enumerate(overlaps or []):
+        if d and t >= pieces[j + 1][0]:
+            out -= d
+    return max(out, 0.0)
 
 
-def times_in_long(overlays: list[Overlay], pieces: list[tuple[float, float]]) -> list[tuple[Overlay, float, float]]:
+def times_in_long(overlays: list[Overlay], pieces: list[tuple[float, float]],
+                  overlaps: list[float] | None = None) -> list[tuple[Overlay, float, float]]:
     """The overlays that show in the long video. One that runs into a cut just ends sooner."""
     found = []
     for o in overlays:
-        a, b = to_output_time(o.start, pieces), to_output_time(o.end, pieces)
+        a, b = to_output_time(o.start, pieces, overlaps), to_output_time(o.end, pieces, overlaps)
         if b - a >= 0.05:
             found.append((o, a, b))
     return found
@@ -224,10 +231,11 @@ def image_inputs(placed: list[Placed], fps: int) -> list[str]:
     return args
 
 
-def filter_graph(pre: str, post: str, placed: list[Placed], first_input: int, fps: int = 30) -> str:
-    """A -filter_complex graph: the video through `pre`, each overlay laid on in turn, then `post`.
+def filter_graph(pre: str, post: str, placed: list[Placed], first_input: int, fps: int = 30,
+                 source: str = "[0:v]") -> str:
+    """A -filter_complex graph: the video (source) through `pre`, each overlay laid on in turn, then `post`.
     The result is labelled [vout]."""
-    parts = [f"[0:v]{pre}[b0]"]
+    parts = [f"{source}{pre or 'null'}[b0]"]
     last = "b0"
     for i, p in enumerate(placed):
         s, e = p.start, p.end

@@ -77,7 +77,12 @@ LONG = """
 <li><b>Open the game video</b> in the Editor and click <i>Long video</i> at the top right.</li>
 <li><b>Mark what to cut.</b> Press <span class="key">{mark_start}</span> where a dead stretch starts (shuffling, a long think,
 a break) and <span class="key">{mark_end}</span> where it ends. It shows striped red on the timeline. Cuts that overlap join into one.</li>
-<li><b>Check the flow.</b> Press <span class="key">{preview}</span> to watch from where you are with every cut skipped.</li>
+<li><b>Pick how each cut joins up (optional).</b> With a cut picked, <i>Join</i> (under the fine-tune buttons) chooses
+<i>Hard cut</i> (straight on, the usual choice), <i>Crossfade</i> (the two parts blend for half a second), <i>Dip to black</i>
+(a fade to black and back, good for a big jump in time) or <i>Whip</i> (a quick blurred smear, for energy). The cut list's
+<i>Join</i> column shows each one. To change every cut at once, pick the default in Settings &gt; Export.</li>
+<li><b>Check the flow.</b> Press <span class="key">{preview}</span> to watch from where you are with every cut skipped. The joins
+play in the preview too.</li>
 <li><b>Export.</b> Click <i>Export long video</i>. It goes in the <i>Long videos</i> folder and the Post tab. A long game takes a
 while to export; the window shows how long is left. The size (1080p or the recording's own size) is in Settings.</li>
 </ol>

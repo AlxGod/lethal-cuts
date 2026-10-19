@@ -33,6 +33,7 @@ class Clip:
     end: float
     name: str = ""
     crop: Crop | None = None  # None = not set yet (exports centered)
+    transition: str = ""      # long video cuts: how the video joins up here ("" = the default in Settings)
 
     @property
     def length(self) -> float:
@@ -126,7 +127,8 @@ class Project:
             "position": round(self.position, 3),
             "last_crop": asdict(self.last_crop) if self.last_crop else None,
             "clips": [asdict(c) for c in self.clips],
-            "cuts": [{"start": round(c.start, 3), "end": round(c.end, 3)} for c in self.cuts],
+            "cuts": [{"start": round(c.start, 3), "end": round(c.end, 3), **({"transition": c.transition} if c.transition else {})}
+                     for c in self.cuts],
             "moments": [round(m, 3) for m in self.moments],
             "overlays": [asdict(o) for o in self.overlays],
             "long_overlays": [asdict(o) for o in self.long_overlays],
@@ -153,7 +155,8 @@ def open_project(video_path: Path) -> Project:
         for c in data.get("clips", [])
     ]
     clips.sort(key=lambda c: c.start)
-    cuts = sorted((Clip(float(c["start"]), float(c["end"])) for c in data.get("cuts", [])), key=lambda c: c.start)
+    cuts = sorted((Clip(float(c["start"]), float(c["end"]), transition=str(c.get("transition", "")))
+                   for c in data.get("cuts", [])), key=lambda c: c.start)
     moments = sorted(float(m) for m in data.get("moments", []))
     overlays = sorted((Overlay.from_dict(o) for o in data.get("overlays", [])), key=lambda o: o.start)
     long_overlays = sorted((Overlay.from_dict(o) for o in data.get("long_overlays", [])), key=lambda o: o.start)

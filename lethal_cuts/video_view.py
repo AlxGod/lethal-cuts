@@ -9,9 +9,10 @@ and can be dragged around and resized there.
 from __future__ import annotations
 
 import math
+import time
 
 from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPainterPath, QPen
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import QFrame, QGraphicsScene, QGraphicsTextItem, QGraphicsView
 
@@ -68,6 +69,8 @@ class VideoView(QGraphicsView):
         self.overlay_bounds: tuple[float, float] | None = None  # previewing one clip: overlays are cut to it
         self.selected_overlay = -1
         self.editing = True                    # paused: show the selected overlay's outline and handle
+        # A transition being shown in the long video preview: (kind, last picture before the cut, start, seconds)
+        self._transition: tuple[str, QImage, float, float] | None = None
 
     # --- state from the main window ---
     def set_has_video(self, has_video: bool) -> None:
@@ -111,6 +114,41 @@ class VideoView(QGraphicsView):
                      selected: int, editing: bool, bounds: tuple[float, float] | None = None) -> None:
         self.overlays, self.overlay_time, self.overlay_crop = overlays, t, crop
         self.overlay_size, self.selected_overlay, self.editing, self.overlay_bounds = size, selected, editing, bounds
+        self.viewport().update()
+
+    def start_transition(self, kind: str, seconds: float) -> None:
+        """The long preview is about to jump over a cut: keep the last picture and play the join over it."""
+        frame = self.video_item.videoSink().videoFrame()
+        image = frame.toImage() if frame.isValid() else QImage()
+        if not image.isNull() and seconds > 0:
+            self._transition = (kind, image, time.monotonic(), seconds)
+            self.viewport().update()
+
+    def _draw_transition(self, painter: QPainter):
+        kind, image, began, seconds = self._transition
+        p = (time.monotonic() - began) / seconds
+        if p >= 1:
+            self._transition = None
+            return
+        area = self.video_rect()
+        painter.save()
+        painter.setClipRect(area)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        if kind == "fade":
+            painter.setOpacity(1 - p)  # the old part fades away over the new one
+            painter.drawImage(area, image)
+        elif kind == "dip":
+            if p < 0.5:
+                painter.drawImage(area, image)
+                painter.fillRect(area, QColor(0, 0, 0, int(255 * p * 2)))
+            else:
+                painter.fillRect(area, QColor(0, 0, 0, int(255 * (2 - p * 2))))
+        else:  # whip: the old picture smears off sideways
+            shift = area.width() * (1 - (1 - p) ** 2)
+            for k, alpha in ((0, 1.0), (1, 0.45), (2, 0.25)):
+                painter.setOpacity((1 - p) * alpha)
+                painter.drawImage(area.translated(-shift - k * area.width() * 0.06, 0), image)
+        painter.restore()
         self.viewport().update()
 
     # --- overlay geometry ---
@@ -183,6 +221,8 @@ class VideoView(QGraphicsView):
             self._draw_preview_mask(painter)
         elif self.crop is not None:
             self._draw_crop(painter)
+        if self._transition:
+            self._draw_transition(painter)
         self._draw_overlays(painter)
 
     def _draw_overlays(self, painter: QPainter):

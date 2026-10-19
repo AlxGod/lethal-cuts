@@ -119,6 +119,14 @@ class SettingsPage(QScrollArea):
             self.long_size.addItem(label, key)
         self.long_size.setCurrentIndex(list(LONG_SIZES).index(s.long_size))
         form.addRow("Long video size:", self.long_size)
+        from .long_export import TRANSITIONS
+        self.long_transition = QComboBox()
+        for key, (label, _, seconds) in TRANSITIONS.items():
+            self.long_transition.addItem(label + (f" ({seconds:g} s)" if seconds else ""), key)
+        self.long_transition.setCurrentIndex(max(self.long_transition.findData(s.long_transition), 0))
+        self.long_transition.setToolTip("How a long video joins up where a dead stretch was cut out. Each cut can "
+                                        "pick its own in the Editor.")
+        form.addRow("Long video cuts join with:", self.long_transition)
         layout.addWidget(exp)
 
         # Tips
@@ -168,6 +176,7 @@ class SettingsPage(QScrollArea):
             w.valueChanged.connect(lambda _: self._apply())
         self.quality.currentIndexChanged.connect(lambda _: self._apply())
         self.long_size.currentIndexChanged.connect(lambda _: self._apply())
+        self.long_transition.currentIndexChanged.connect(lambda _: self._apply())
         self.nudges.toggled.connect(lambda _: self._apply())
         self.moment_key.currentIndexChanged.connect(lambda _: self._apply())
         self.moment_minutes.currentIndexChanged.connect(lambda _: self._apply())
@@ -253,6 +262,7 @@ class SettingsPage(QScrollArea):
         self.step.setValue(fresh.step_seconds)
         self.quality.setCurrentIndex(list(QUALITIES).index(fresh.quality))
         self.long_size.setCurrentIndex(list(LONG_SIZES).index(fresh.long_size))
+        self.long_transition.setCurrentIndex(max(self.long_transition.findData(fresh.long_transition), 0))
         self.nudges.setChecked(True)
         self.moment_key.setCurrentText(fresh.moment_key)
         self.moment_minutes.setCurrentIndex(MOMENT_MINUTES.index(int(fresh.moment_minutes)))
@@ -267,6 +277,7 @@ class SettingsPage(QScrollArea):
         self.s.step_seconds = self.step.value()
         self.s.quality = self.quality.currentData()
         self.s.long_size = self.long_size.currentData()
+        self.s.long_transition = self.long_transition.currentData()
         self.s.nudges = self.nudges.isChecked()
         self.s.moment_key = self.moment_key.currentText()
         self.s.moment_minutes = self.moment_minutes.currentData()

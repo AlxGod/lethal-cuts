@@ -62,6 +62,7 @@ class Settings:
     save_folder: str = ""     # where all videos go; filled in on the first start (see folders.py)
     quality: str = "high"
     long_size: str = "1080"   # long videos: "1080" (faster, smaller) or "source" (same size as the recording)
+    long_transition: str = "cut"  # long videos: how cuts join up unless a cut picks its own (long_export.TRANSITIONS)
     nudges: bool = True       # friendly tips while working
     clip_color_a: str = "#b0304a"
     clip_color_b: str = "#7b4fc9"
@@ -118,6 +119,8 @@ def load() -> Settings:
         s.quality = "high"
     if s.long_size not in LONG_SIZES:
         s.long_size = "1080"
+    if s.long_transition not in ("cut", "fade", "dip", "whip"):
+        s.long_transition = "cut"
     if s.moment_key not in MOMENT_KEYS:
         s.moment_key = "F8"
     s.editor_volume = min(s.editor_volume, 1.0)
