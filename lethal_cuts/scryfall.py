@@ -32,7 +32,7 @@ HEADERS = {"User-Agent": f"LethalCuts/{__version__} (github.com/AlxGod/lethal-cu
 REQUEST_GAP = 0.12          # seconds between API requests (Scryfall allows about 10 a second)
 COOL_OFF = 60               # seconds to stop asking after a "too many requests" answer
 LOOKUP_DAYS = 7             # saved lookups are reused for this long
-MAX_PRINTINGS = 120         # printings shown for one card (newest first)
+MAX_PRINTINGS = 350         # printings shown for one card, newest first (Scryfall sends 175 a page)
 COLLECTION_BATCH = 75       # Scryfall's limit for looking up many cards in one request
 DECK_HEADERS = {"commander", "deck", "mainboard", "main", "sideboard", "maybeboard", "maybe", "companion",
                 "lands", "creatures", "artifacts", "enchantments", "instants", "sorceries", "planeswalkers",
