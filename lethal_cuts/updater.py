@@ -18,6 +18,8 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout
 
 from . import __version__
+from .folders import installer_choice
+from .tools import app_dir
 
 REPO = "AlxGod/lethal-cuts"
 LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -70,8 +72,16 @@ def clean_old_download() -> None:
 
 def run_installer(installer: Path) -> None:
     """Starts the new installer quietly; it closes this program, updates it and opens it again."""
-    subprocess.Popen([str(installer), "/SILENT", "/SUPPRESSMSGBOXES", "/NOCANCEL", "/RESTART"],
-                     creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    args = [str(installer), "/SILENT", "/SUPPRESSMSGBOXES", "/NOCANCEL", "/RESTART"]
+    program = app_dir()
+    if (program / "unins000.exe").exists():
+        # Name this copy's folders outright, so the update always lands on top of it, even if Windows'
+        # record of the install was lost (it would otherwise go to the default folder on C:).
+        args.append(f"/DIR={program.parent}")
+        saved = installer_choice()
+        if saved:
+            args.append(f"/SAVEDIR={saved}")
+    subprocess.Popen(args, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
 class Checker(QObject):
