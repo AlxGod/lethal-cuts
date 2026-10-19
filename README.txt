@@ -13,7 +13,7 @@ play on the computer, like Tabletop Simulator.
 
 INSTALLING
 ----------
-1. Double-click "Lethal Cuts Setup 0.4.0.exe".
+1. Double-click "Lethal Cuts Setup 0.4.1.exe".
 2. Windows will probably show a blue box: "Windows protected your PC".
    That's normal for programs made by a person rather than a big company.
    Click "More info", then "Run anyway".
@@ -62,7 +62,8 @@ open it in the Editor.
 MAKING SHORTS
 -------------
 1. Open the video in the Editor (Open video button, or drag the file onto the window).
-2. Skim with the 2x / 3x / 4x buttons or the arrow keys. Marked moments with F8?
+2. Skim with the 2x / 3x / 4x buttons or the arrow keys. The Volume slider only
+   changes how loud it plays while you edit; exports always even out the volume. Marked moments with F8?
    Press N to jump to a few minutes before each one. On a long game, scroll the
    mouse wheel over the timeline to zoom in (double-click it to zoom back out).
 3. Press I when a great moment starts and O when it ends. The video keeps playing.

@@ -8,6 +8,8 @@ HELP = {
     "open": "Opens a game recording. iPhone .mov videos work as they are, with nothing to convert. "
             "You can also drag a video file onto the window.",
     "play": "Plays or pauses the video. The Space bar does the same.",
+    "volume": "How loud the video plays while you edit. It only changes what you hear here: exported Shorts and "
+              "long videos always have their volume evened out for YouTube and TikTok, whatever this is set to.",
     "speed": "Plays faster so you can skim a long game. 1x is normal speed; 4x gets through an hour in 15 minutes. "
              "Keys 1 to 4 switch speed too.",
     "mark": "Press Mark start (I) when a great moment begins and Mark end (O) when it's over. "

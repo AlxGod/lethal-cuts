@@ -73,6 +73,7 @@ class Settings:
     moment_minutes: float = 5.0  # each moment covers this many minutes before the key press
     record_gb_per_hour: float = 0.0  # learned from real recordings (0 = not yet, a safe guess is used)
     youtube_verified: bool = False   # the YouTube account can take videos over 15 minutes
+    editor_volume: float = 1.0  # how loud the Editor plays (0 to 1); exports are never affected
 
     def key(self, action: str) -> str:
         return self.hotkeys.get(action) or ACTIONS[action][1]
@@ -119,6 +120,7 @@ def load() -> Settings:
         s.long_size = "1080"
     if s.moment_key not in MOMENT_KEYS:
         s.moment_key = "F8"
+    s.editor_volume = min(s.editor_volume, 1.0)
     if s.moment_minutes not in MOMENT_MINUTES:
         s.moment_minutes = 5.0
     return s

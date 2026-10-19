@@ -9,7 +9,7 @@ from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
-    QMessageBox, QPushButton, QScrollBar, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QScrollBar, QSlider, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import crop as cropmath
@@ -98,6 +98,16 @@ class MainWindow(QMainWindow):
         self.play_btn.clicked.connect(self.toggle_play)
         self.time_label = QLabel("0:00.0 / 0:00.0")
         self.time_label.setObjectName("timeLabel")
+        # How loud it plays while editing; exports are never affected
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setFixedWidth(90)
+        self.volume_slider.setToolTip("How loud it plays while you edit. Doesn't change the exported videos.")
+        self.volume_slider.valueChanged.connect(self._on_volume)
+        self.volume_label = QLabel()
+        self.volume_label.setObjectName("dimLabel")
+        self.volume_label.setFixedWidth(84)
+        self.volume_save = QTimer(self, singleShot=True, interval=800, timeout=self._save_settings_quietly)
 
         self.speed_group = QButtonGroup(self)
         speed_box = QHBoxLayout()
@@ -147,9 +157,10 @@ class MainWindow(QMainWindow):
         controls.addLayout(with_help(self.play_btn, "play"))
         controls.addWidget(self.time_label)
         controls.addSpacing(12)
-        controls.addLayout(speed_box)
+        controls.addWidget(self.volume_label)
+        controls.addLayout(with_help(self.volume_slider, "volume"))
         controls.addSpacing(12)
-        controls.addWidget(self.moment_box)
+        controls.addLayout(speed_box)
         controls.addStretch(1)
         controls.addWidget(self.mark_in_btn)
         controls.addLayout(with_help(self.mark_out_btn, "mark"))
@@ -194,6 +205,10 @@ class MainWindow(QMainWindow):
         timeline_row.addLayout(zoom_col)
         timeline_row.addWidget(HelpButton(HELP["timeline"]))
         left_layout.addLayout(timeline_row)
+        moment_line = QHBoxLayout()  # only shows when the recording has moments marked with the moment key
+        moment_line.addWidget(self.moment_box)
+        moment_line.addStretch(1)
+        left_layout.addLayout(moment_line)
 
         # Clip list
         self.clip_list = ClipList()
@@ -471,6 +486,10 @@ class MainWindow(QMainWindow):
         for n in SPEEDS:
             self.speed_group.button(n).setToolTip(f"Play at {n}x speed for skimming (key {s.key(f'speed_{n}')})")
         self.timeline.set_colors(s.clip_color_a, s.clip_color_b)
+        self.volume_slider.blockSignals(True)
+        self.volume_slider.setValue(round(s.editor_volume * 100))
+        self.volume_slider.blockSignals(False)
+        self._apply_volume()
         self._refresh_moments()
         self.prev_moment_btn.setToolTip(f"Jump to the moment before ({s.key('prev_moment')})")
         self.next_moment_btn.setToolTip(f"Jump to the next moment marked while recording ({s.key('next_moment')})")
@@ -483,6 +502,22 @@ class MainWindow(QMainWindow):
         self.record_page.refresh(s)
         self._refresh_long_summary()
         self._refresh_tips()
+
+    def _on_volume(self, value: int):
+        self.settings.editor_volume = value / 100
+        self._apply_volume()
+        self.volume_save.start()  # remembered for next time, once the slider stops moving
+
+    def _apply_volume(self):
+        level = self.settings.editor_volume
+        self.audio.setVolume(level ** 2)  # squared, so the slider feels even to the ear
+        self.volume_label.setText(f"Volume {round(level * 100)}%" if level else "Muted")
+
+    def _save_settings_quietly(self):
+        try:
+            settings_mod.save(self.settings)
+        except OSError:
+            pass
 
     def set_youtube_verified(self, on: bool):
         """The YouTube account can take videos over 15 minutes, so stop warning about it."""
