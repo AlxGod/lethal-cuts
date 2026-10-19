@@ -125,11 +125,40 @@ begin
   end;
 end;
 
+// Browsing to an existing "Lethal Cuts" folder makes Windows add "\Lethal Cuts" again
+// (G:\Lethal Cuts\Lethal Cuts). Use the folder that was picked instead.
+procedure UndoDoubleFolder;
+var
+  Dir, Parent: String;
+begin
+  Dir := RemoveBackslashUnlessRoot(WizardDirValue);
+  Parent := ExtractFileDir(Dir);
+  if (Parent <> Dir) and (CompareText(ExtractFileName(Dir), 'Lethal Cuts') = 0) and
+     ((CompareText(ExtractFileName(Parent), 'Lethal Cuts') = 0) or
+      FileExists(AddBackslash(Parent) + 'program\Lethal Cuts.exe')) then
+    WizardForm.DirEdit.Text := Parent;
+end;
+
+// A fresh install into a folder that already has a Videos folder (a reinstall) suggests it for videos
+procedure CurPageChanged(CurPageID: Integer);
+var
+  Videos: String;
+begin
+  if (CurPageID = SavePage.ID) and (SaveDirParam = '') and (GetPreviousData('SaveFolder', '') = '') then
+  begin
+    Videos := AddBackslash(WizardDirValue) + 'Videos';
+    if DirExists(Videos) then
+      SavePage.Values[0] := Videos;
+  end;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   ProgramDir: String;
 begin
   Result := True;
+  if CurPageID = wpSelectDir then
+    UndoDoubleFolder;
   if (CurPageID = wpSelectDir) and not CanWriteTo(WizardDirValue) then
   begin
     MsgBox('Windows doesn''t let programs install in that folder without an admin password.' + #13#10 +
