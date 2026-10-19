@@ -99,6 +99,7 @@ class Project:
     moments: list[float] = field(default_factory=list)  # seconds where the moment key was pressed while recording
     overlays: list[Overlay] = field(default_factory=list)       # cards and text on the Shorts
     long_overlays: list[Overlay] = field(default_factory=list)  # cards and text on the long video
+    title_card: dict | None = None  # the long video's opening title card (pause_title.new_title)
 
     @property
     def path(self) -> Path:
@@ -132,6 +133,7 @@ class Project:
             "moments": [round(m, 3) for m in self.moments],
             "overlays": [asdict(o) for o in self.overlays],
             "long_overlays": [asdict(o) for o in self.long_overlays],
+            "title_card": self.title_card,
         }
         # Write to a temporary file first, then swap it in, so a crash mid-save
         # can never leave a half-written project file behind.
@@ -160,8 +162,9 @@ def open_project(video_path: Path) -> Project:
     moments = sorted(float(m) for m in data.get("moments", []))
     overlays = sorted((Overlay.from_dict(o) for o in data.get("overlays", [])), key=lambda o: o.start)
     long_overlays = sorted((Overlay.from_dict(o) for o in data.get("long_overlays", [])), key=lambda o: o.start)
+    title = data.get("title_card") if isinstance(data.get("title_card"), dict) else None
     return Project(video_path, clips, float(data.get("position", 0.0)), Crop.from_dict(data.get("last_crop")), cuts,
-                   moments, overlays, long_overlays)
+                   moments, overlays, long_overlays, title)
 
 
 def format_time(seconds: float, tenths: bool = True) -> str:

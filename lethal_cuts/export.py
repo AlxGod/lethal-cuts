@@ -102,7 +102,11 @@ def gpu_encoder_works() -> bool:
     return _gpu_encoder_ok
 
 
-def video_filter(info: VideoInfo, crop: Crop | None) -> str:
+TICK = "0.18*sin(2*PI*1320*t)*lt(mod(t,1),0.05)"  # a soft tick each second under a pause card
+
+
+def video_filter(info: VideoInfo, crop: Crop | None, freezes: list[tuple[float, int]] | None = None) -> str:
+    """freezes: pause cards as (seconds into the clip, how many seconds the frame holds)."""
     c = cropmath.clamp(crop, info.aspect) if crop else cropmath.default_crop(info.aspect)
     box_w = cropmath.box_width(c.h, info.aspect) * info.width
     box_h = c.h * info.height
@@ -118,10 +122,37 @@ def video_filter(info: VideoInfo, crop: Crop | None) -> str:
             "zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",
             "tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv",
         ]
+    steps.append(f"fps={info.fps}")
+    if freezes:
+        # Each pause card repeats one frame: the loop filter holds a single frame in memory
+        added = 0
+        for at, seconds in freezes:
+            frames = int(round(seconds * info.fps))
+            steps.append(f"loop=loop={frames}:size=1:start={int(round(at * info.fps)) + added}")
+            added += frames
+        steps.append("setpts=N/FRAME_RATE/TB")
     # Label the picture as standard (Rec. 709) color so every player shows it the same.
-    steps += ["format=yuv420p", "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709",
-              f"fps={info.fps}", "setsar=1"]
+    steps += ["format=yuv420p", "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709", "setsar=1"]
     return ",".join(steps)
+
+
+def freeze_audio(freezes: list[tuple[float, int]], tail: str) -> str:
+    """The sound for a Short with pause cards: it stops at each one, ticks for its seconds, then carries on.
+    Ends at [aout]."""
+    n = len(freezes) + 1
+    fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+    parts = [f"[0:a]aresample=48000,{fmt},asplit={n}" + "".join(f"[fs{i}]" for i in range(n))]
+    joined = []
+    edges = [0.0] + [at for at, _ in freezes]
+    for i in range(n):
+        end = f":end={freezes[i][0]:.6f}" if i < len(freezes) else ""
+        parts.append(f"[fs{i}]atrim=start={edges[i]:.6f}{end},asetpts=PTS-STARTPTS[fp{i}]")
+        joined.append(f"[fp{i}]")
+        if i < len(freezes):
+            parts.append(f"aevalsrc='{TICK}':s=48000:d={freezes[i][1]},{fmt}[ft{i}]")
+            joined.append(f"[ft{i}]")
+    parts.append("".join(joined) + f"concat=n={len(joined)}:v=0:a=1,{tail}[aout]")
+    return ";".join(parts)
 
 
 def measure_loudness(video: Path, clip: Clip, cancelled=lambda: False) -> dict | None:
@@ -170,16 +201,29 @@ def video_args(chain: str, placed: list | None, fps: int) -> list[str]:
 
 
 def encode_args(video: Path, clip: Clip, info: VideoInfo, measured: dict | None, out: Path, gpu: bool,
-                crf: int = X264_QUALITY, cq: int = NVENC_QUALITY, placed: list | None = None) -> list[str]:
+                crf: int = X264_QUALITY, cq: int = NVENC_QUALITY, placed: list | None = None,
+                freezes: list[tuple[float, int]] | None = None) -> list[str]:
     args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1",
-            "-ss", f"{clip.start:.3f}", "-t", f"{clip.length:.3f}", "-i", str(video),
-            *video_args(video_filter(info, clip.crop), placed, info.fps), "-fps_mode", "cfr"]
+            "-ss", f"{clip.start:.3f}", "-t", f"{clip.length:.3f}", "-i", str(video)]
+    chain = video_filter(info, clip.crop, freezes)
+    if freezes:
+        # Pause cards: picture and sound both go through one graph
+        pre, post = split_chain(chain)
+        graph = overlay_mod.filter_graph(pre, post, placed or [], 1, info.fps)
+        if info.has_audio:
+            graph += ";" + freeze_audio(freezes, audio_filter(measured) + ",aresample=48000")
+        args += [*overlay_mod.image_inputs(placed or [], info.fps), "-filter_complex", graph, "-map", "[vout]"]
+    else:
+        args += video_args(chain, placed, info.fps)
+    args += ["-fps_mode", "cfr"]
     if gpu:
         args += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(cq), "-b:v", "0"]
     else:
         args += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf)]
     args += ["-profile:v", "high", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
-    if info.has_audio:
+    if info.has_audio and freezes:
+        args += ["-map", "[aout]", "-c:a", "aac", "-b:a", AUDIO_BITRATE, "-ar", "48000"]
+    elif info.has_audio:
         args += ["-map", "0:a:0", "-af", audio_filter(measured) + ",aresample=48000",
                  "-c:a", "aac", "-b:a", AUDIO_BITRATE, "-ar", "48000"]
     args += ["-movflags", "+faststart", str(out)]

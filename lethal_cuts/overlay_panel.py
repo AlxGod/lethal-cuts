@@ -14,11 +14,11 @@ from PySide6.QtWidgets import (
 )
 
 from . import overlays as ov
-from . import text_look
+from . import pause_title, text_look
 from .help import HELP, HelpButton
 from .project import Overlay, format_time
 
-KIND_NAMES = {"text": "Text", "card": "Card"}
+KIND_NAMES = {"text": "Text", "card": "Card", "pause": "Pause card"}
 OUTLINES = [("None", 0.0), ("Thin", 0.08), ("Medium", 0.14), ("Thick", 0.2)]
 
 
@@ -51,6 +51,8 @@ class ColorButton(QPushButton):
 class OverlayPanel(QWidget):
     add_text = Signal()
     add_card = Signal()
+    add_pause = Signal()
+    edit_title = Signal()
     change_card = Signal(int)
     selected = Signal(int)    # row picked in the list, or -1
     edited = Signal(int)      # the picked overlay was changed here (in place)
@@ -69,11 +71,21 @@ class OverlayPanel(QWidget):
         self.add_card_btn = QPushButton("+ Card")
         self.add_card_btn.setToolTip("Search every Magic card and put one on the video at the playhead")
         self.add_card_btn.clicked.connect(self.add_card.emit)
+        self.add_pause_btn = QPushButton("+ Pause")
+        self.add_pause_btn.setToolTip("A \"What's your play?\" pause card: the Short freezes here and counts down")
+        self.add_pause_btn.clicked.connect(self.add_pause.emit)
+        self.title_btn = QPushButton("+ Title card")
+        self.title_btn.setToolTip("A series title card at the start of the long video")
+        self.title_btn.clicked.connect(self.edit_title.emit)
         add_row = QHBoxLayout()
         add_row.addWidget(self.add_card_btn)
         add_row.addWidget(self.add_text_btn)
         add_row.addStretch(1)
         add_row.addWidget(HelpButton(HELP["overlays"]))
+        extra_row = QHBoxLayout()  # on its own row so the side panel stays narrow
+        extra_row.addWidget(self.add_pause_btn)
+        extra_row.addWidget(self.title_btn)
+        extra_row.addStretch(1)
 
         self.empty_note = QLabel("Add a card or text at the playhead, then drag it on the video to place it. "
                                  "Its bar under the timeline sets when it shows.")
@@ -189,7 +201,8 @@ class OverlayPanel(QWidget):
         self.length_spin.setDecimals(1)
         self.length_spin.setSuffix(" seconds")
         self.length_spin.valueChanged.connect(self._on_length)
-        form.addRow("Shows for", self.length_spin)
+        self.length_label = QLabel("Shows for")
+        form.addRow(self.length_label, self.length_spin)
         self.size_slider = QSlider(Qt.Horizontal)
         self.size_slider.setRange(int(ov.MIN_SIZE * 100), int(ov.MAX_SIZE * 100))
         self.size_slider.setToolTip("Or scroll the mouse wheel over it on the video, or drag its corner")
@@ -201,14 +214,16 @@ class OverlayPanel(QWidget):
         self.in_combo.currentIndexChanged.connect(self._on_anim)
         self.in_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.in_combo.setMinimumContentsLength(6)
-        form.addRow("Comes in", self.in_combo)
+        self.in_label = QLabel("Comes in")
+        form.addRow(self.in_label, self.in_combo)
         self.out_combo = QComboBox()
         for key, name in ov.ANIMS_OUT.items():
             self.out_combo.addItem(name, key)
         self.out_combo.currentIndexChanged.connect(self._on_anim)
         self.out_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.out_combo.setMinimumContentsLength(6)
-        form.addRow("Goes away", self.out_combo)
+        self.out_label = QLabel("Goes away")
+        form.addRow(self.out_label, self.out_combo)
         self.jump_btn = QPushButton("Jump to it")
         self.jump_btn.clicked.connect(lambda: self.jump_requested.emit(self.selected_index()))
         self.delete_btn = QPushButton("Delete")
@@ -223,6 +238,12 @@ class OverlayPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 6, 0, 0)
         layout.addLayout(add_row)
+        layout.addLayout(extra_row)
+        self.title_note = QLabel()
+        self.title_note.setObjectName("dimLabel")
+        self.title_note.setWordWrap(True)
+        self.title_note.hide()
+        layout.addWidget(self.title_note)
         layout.addWidget(self.empty_note)
         layout.addWidget(self.table, 1)
         layout.addWidget(self.edit_box)
@@ -251,6 +272,17 @@ class OverlayPanel(QWidget):
                 item = QTableWidgetItem()
                 self.table.setItem(row, col, item)
             item.setText(text)
+
+    def set_mode(self, long: bool, title: dict | None) -> None:
+        """Pause cards are for Shorts; the title card is for the long video."""
+        self.long_mode = long
+        self.add_pause_btn.setVisible(not long)
+        self.title_btn.setVisible(long)
+        self.title_btn.setText("Title card..." if title else "+ Title card")
+        if long and title:
+            self.title_note.setText(f"Title card: {title.get('series', '')}, episode {title.get('episode', 1)} "
+                                    f"({pause_title.title_seconds(title):g} s at the start)")
+        self.title_note.setVisible(bool(long and title))
 
     def refresh_row(self, row: int) -> None:
         """Shows changes made elsewhere (dragged on the video or the timeline)."""
@@ -283,7 +315,15 @@ class OverlayPanel(QWidget):
         o = self.overlays[row] if 0 <= row < len(self.overlays) else None
         self.edit_box.setEnabled(o is not None)
         self._filling = True
-        is_text = o is None or o.kind == "text"
+        is_text = o is None or o.kind in ("text", "pause")
+        is_pause = o is not None and o.kind == "pause"
+        for w in (self.in_combo, self.out_combo, self.in_label, self.out_label):
+            w.setVisible(not is_pause)  # a pause card just appears and goes
+        self.length_spin.setDecimals(0 if is_pause else 1)
+        self.length_spin.setSingleStep(1 if is_pause else 0.5)
+        self.length_spin.setRange(pause_title.PAUSE_MIN if is_pause else ov.MIN_SECONDS,
+                                  pause_title.PAUSE_MAX if is_pause else 3600)
+        self.length_label.setText("Countdown" if is_pause else "Shows for")
         for w in (self.text_label, self.text_edit, self.text_tip, self.style_label, self.style_combo, self.custom_btn):
             w.setVisible(is_text)
         self.custom_box.setVisible(is_text and self.custom_btn.isChecked())
@@ -348,18 +388,18 @@ class OverlayPanel(QWidget):
 
     def _is_text(self) -> bool:
         row = self.selected_index()
-        return not (0 <= row < len(self.overlays)) or self.overlays[row].kind == "text"
+        return not (0 <= row < len(self.overlays)) or self.overlays[row].kind in ("text", "pause")
 
     def _on_style(self):
         row, o = self._current()
-        if o and o.kind == "text":
-            text_look.apply_style(o, self.style_combo.currentData(), self.long_mode)
+        if o and o.kind in ("text", "pause"):
+            text_look.apply_style(o, self.style_combo.currentData(), self.long_mode, place=o.kind == "text")
             self._show_selected(keep_text=True)
             self.edited.emit(row)
 
     def _on_look(self, *_):
         row, o = self._current()
-        if not o or o.kind != "text":
+        if not o or o.kind not in ("text", "pause"):
             return
         family, weight = self.font_combo.currentData() or (o.font, o.weight)
         o.font, o.weight = family, weight

@@ -71,6 +71,8 @@ class VideoView(QGraphicsView):
         self.editing = True                    # paused: show the selected overlay's outline and handle
         # A transition being shown in the long video preview: (kind, last picture before the cut, start, seconds)
         self._transition: tuple[str, QImage, float, float] | None = None
+        self.freeze: tuple[int, int] | None = None
+        self._title: tuple[QImage, float, float] | None = None  # the long preview's title card: (picture, start, seconds)
 
     # --- state from the main window ---
     def set_has_video(self, has_video: bool) -> None:
@@ -111,9 +113,12 @@ class VideoView(QGraphicsView):
         self._layout()
 
     def set_overlays(self, overlays: list[Overlay], t: float, crop: Crop | None, size: tuple[int, int],
-                     selected: int, editing: bool, bounds: tuple[float, float] | None = None) -> None:
+                     selected: int, editing: bool, bounds: tuple[float, float] | None = None,
+                     freeze: tuple[int, int] | None = None) -> None:
+        """freeze: (pause card, number showing) while the vertical preview holds on a pause card."""
         self.overlays, self.overlay_time, self.overlay_crop = overlays, t, crop
         self.overlay_size, self.selected_overlay, self.editing, self.overlay_bounds = size, selected, editing, bounds
+        self.freeze = freeze
         self.viewport().update()
 
     def start_transition(self, kind: str, seconds: float) -> None:
@@ -167,10 +172,40 @@ class VideoView(QGraphicsView):
     def visible_overlays(self) -> list[int]:
         found = []
         for i, o in enumerate(self.overlays):
+            if o.kind == "pause":
+                # Shown while the preview holds on it, or while paused on its bar to place it
+                if (self.freeze and self.freeze[0] == i) or (
+                        not self.freeze and self.editing and o.start <= self.overlay_time <= o.end):
+                    found.append(i)
+                continue
             a, b = self._shown_window(o)
             if a <= self.overlay_time <= b:
                 found.append(i)
         return found
+
+    def show_title(self, image: QImage, seconds: float) -> None:
+        """The long preview starts with the title card, which then dips to black into the video."""
+        self._title = (image, time.monotonic(), seconds)
+        self.viewport().update()
+
+    def _draw_title(self, painter: QPainter):
+        image, began, seconds = self._title
+        elapsed = time.monotonic() - began
+        if elapsed >= seconds:
+            self._title = None
+            return
+        area = self.video_rect()
+        dip = 0.6
+        painter.save()
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        if elapsed < seconds - dip / 2:
+            painter.drawImage(area, image)
+            if elapsed > seconds - dip:
+                painter.fillRect(area, QColor(0, 0, 0, int(255 * (elapsed - (seconds - dip)) / (dip / 2))))
+        else:
+            painter.fillRect(area, QColor(0, 0, 0, int(255 * max(seconds - elapsed, 0) / (dip / 2))))
+        painter.restore()
+        self.viewport().update()
 
     def overlay_rect(self, index: int, animated: bool = True) -> tuple[QRectF, float]:
         """Where an overlay is drawn on the canvas right now, and how see-through it is."""
@@ -181,7 +216,7 @@ class VideoView(QGraphicsView):
         image = ov.render(o, w_px, h_px)
         cx, cy = ov.resting_center(o, image.width(), image.height(), w_px, h_px)
         opacity, scale, dx = 1.0, 1.0, 0.0
-        if animated:
+        if animated and o.kind != "pause":
             a, b = self._shown_window(o)
             opacity, scale, dx = ov.look(o, a, b, self.overlay_time, ov.slide_offsets(cx, image.width(), w_px))
         w, h = image.width() * scale, image.height() * scale
@@ -224,6 +259,8 @@ class VideoView(QGraphicsView):
         if self._transition:
             self._draw_transition(painter)
         self._draw_overlays(painter)
+        if self._title:
+            self._draw_title(painter)
 
     def _draw_overlays(self, painter: QPainter):
         visible = self.visible_overlays()
@@ -240,7 +277,10 @@ class VideoView(QGraphicsView):
                 continue
             painter.setOpacity(opacity)
             a, b = self._shown_window(self.overlays[i])
-            letters = text_look.typed_letters(self.overlays[i], a, b, self.overlay_time)
+            if self.overlays[i].kind == "pause":
+                letters = self.freeze[1] if self.freeze and self.freeze[0] == i else None  # the countdown number
+            else:
+                letters = text_look.typed_letters(self.overlays[i], a, b, self.overlay_time)
             painter.drawImage(rect, ov.render(self.overlays[i], w_px, h_px, letters))
         painter.setOpacity(1.0)
         if self.editing and self.selected_overlay in visible:

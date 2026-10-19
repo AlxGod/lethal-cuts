@@ -63,6 +63,8 @@ class Settings:
     quality: str = "high"
     long_size: str = "1080"   # long videos: "1080" (faster, smaller) or "source" (same size as the recording)
     long_transition: str = "cut"  # long videos: how cuts join up unless a cut picks its own (long_export.TRANSITIONS)
+    series_name: str = ""     # the title card's series name, as last used
+    next_episode: int = 1     # the title card's next episode number (counts up after each export with one)
     nudges: bool = True       # friendly tips while working
     clip_color_a: str = "#b0304a"
     clip_color_b: str = "#7b4fc9"
@@ -111,6 +113,11 @@ def load() -> Settings:
         elif isinstance(default, float):
             try:
                 s.__dict__[f.name] = max(0.0, float(value))
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(default, int):
+            try:
+                s.__dict__[f.name] = max(1, int(value))
             except (TypeError, ValueError):
                 pass
         elif isinstance(default, str) and isinstance(value, str):

@@ -15,6 +15,7 @@ from PySide6.QtCore import QObject, Signal
 
 from . import export
 from . import overlays as overlay_mod
+from . import pause_title
 from .folders import safe_name
 from .project import Clip, format_time
 from .tools import ffmpeg_path, run_hidden
@@ -143,12 +144,19 @@ def measure_loudness(video: Path, pieces, fps: int) -> dict | None:
     return None if data.get("input_i") in ("-inf", None) else data
 
 
+def output_size(info: export.VideoInfo, size: str) -> tuple[int, int]:
+    """The long video's width and height (the same sums as overlays.long_frame)."""
+    height = output_height(info, size)
+    width = info.width if height == info.height else int(height * info.width / info.height) // 2 * 2
+    return width, height
+
+
 def finish_steps(info: export.VideoInfo, size: str) -> list[str]:
     """Resizing and color steps, done once the frames to keep have been picked."""
     steps = []
-    height = output_height(info, size)
+    width, height = output_size(info, size)
     if height != info.height:
-        steps.append(f"scale=-2:{height}:flags=lanczos")
+        steps.append(f"scale={width}:{height}:flags=lanczos")
     if info.hdr:
         steps += ["zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",
                   "tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv"]
@@ -164,33 +172,52 @@ def _span(group, fps):
     return round(group[0][0] * fps), round(group[-1][1] * fps)
 
 
-def transition_video(info: export.VideoInfo, groups, transitions, size: str) -> str:
-    """Graph parts: every group picked out of one decode, joined by xfade, ending at [lv]."""
+def transition_video(info: export.VideoInfo, groups, transitions, size: str, title: tuple | None = None) -> str:
+    """Graph parts: every group picked out of one decode, joined by xfade, ending at [lv].
+    title: (input number, seconds) of the title card picture that opens the video."""
     fps, n = info.fps, len(groups)
     parts = [f"[0:v]fps={fps},split={n}" + "".join(f"[vs{i}]" for i in range(n))]
+    # With a title card, each part is finished (sized, colored) first, so it matches the title picture
+    finish = "," + ",".join(finish_steps(info, size) + ["format=yuv420p", "setsar=1"]) if title else ""
     for i, g in enumerate(groups):
         half = 0.5 / fps  # by time, half a frame either side, like the select that follows
         parts.append(f"[vs{i}]trim=start={max(g[0][0] - half, 0):.6f}:end={g[-1][1] + half:.6f},"
                      f"select='{keep_expression(g, fps)}',"
-                     f"setpts=N/FRAME_RATE/TB[v{i}]")
+                     f"setpts=N/FRAME_RATE/TB{finish}[v{i}]")
     label, length = "v0", sum(b - a for a, b in groups[0])
+    if title:
+        index, seconds = title
+        width, height = output_size(info, size)
+        d = pause_title.title_dip(fps)
+        parts.append(f"[{index}:v]scale={width}:{height}:flags=lanczos,format=yuv420p,setsar=1,fps={fps},"
+                     f"setpts=N/FRAME_RATE/TB[vt]")
+        parts.append(f"[vt][v0]xfade=transition=fadeblack:duration={d:.6f}:offset={seconds - d:.6f}[vh]")
+        label, length = "vh", seconds + length - d
     for i, (xfade, d) in enumerate(transitions):
         parts.append(f"[{label}][v{i + 1}]xfade=transition={xfade}:duration={d:.6f}:offset={length - d:.6f}[vx{i}]")
         label = f"vx{i}"
         length += sum(b - a for a, b in groups[i + 1]) - d
-    parts.append(f"[{label}]{','.join(finish_steps(info, size)) or 'null'}[lv]")
+    steps = "null" if title else (",".join(finish_steps(info, size)) or "null")
+    parts.append(f"[{label}]{steps}[lv]")
     return ";".join(parts)
 
 
-def transition_audio(groups, transitions, fps: int, tail: str) -> str:
-    """Graph parts for the sound: the same groups, in frame-long chunks, joined by acrossfade, then tail, ending at [aout]."""
+def transition_audio(groups, transitions, fps: int, tail: str, title_seconds: float = 0.0) -> str:
+    """Graph parts for the sound: the same groups, in frame-long chunks, joined by acrossfade, then tail, ending at [aout].
+    With a title card, silence plays under it and fades into the game's sound."""
     n, chunk = len(groups), 48000 // fps
-    parts = [f"[0:a]aresample=48000,asetnsamples=n={chunk}:p=0,asplit={n}" + "".join(f"[as{i}]" for i in range(n))]
+    fmt = ",aformat=sample_fmts=fltp:channel_layouts=stereo" if title_seconds else ""
+    parts = [f"[0:a]aresample=48000{fmt},asetnsamples=n={chunk}:p=0,asplit={n}" + "".join(f"[as{i}]" for i in range(n))]
     for i, g in enumerate(groups):
         first, last = _span(g, fps)
         parts.append(f"[as{i}]atrim=start_sample={first * chunk}:end_sample={last * chunk},"
                      f"aselect='{keep_expression(g, fps)}',asetpts=N/SR/TB[a{i}]")
     label = "a0"
+    if title_seconds:
+        d = pause_title.title_dip(fps)
+        parts.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={title_seconds:.6f},aformat=sample_fmts=fltp[atl]")
+        parts.append(f"[atl][a0]acrossfade=d={d:.6f}:c1=tri:c2=tri[ah]")
+        label = "ah"
     for i, (_, d) in enumerate(transitions):
         parts.append(f"[{label}][a{i + 1}]acrossfade=d={d:.6f}:c1=tri:c2=tri[ax{i}]")
         label = f"ax{i}"
@@ -199,10 +226,12 @@ def transition_audio(groups, transitions, fps: int, tail: str) -> str:
 
 
 def encode_args(video: Path, info: export.VideoInfo, pieces, measured, out: Path, gpu: bool, size: str,
-                crf: int, cq: int, placed: list | None = None, kinds: list[str] | None = None) -> list[str]:
+                crf: int, cq: int, placed: list | None = None, kinds: list[str] | None = None,
+                title: tuple | None = None) -> list[str]:
+    """title: (title card picture, seconds) to open the video with."""
     groups, transitions, _ = plan(pieces, kinds or ["cut"] * (len(pieces) - 1), info.fps)
-    if transitions:
-        return _transition_args(video, info, groups, transitions, measured, out, gpu, size, crf, cq, placed)
+    if transitions or title:
+        return _transition_args(video, info, groups, transitions, measured, out, gpu, size, crf, cq, placed, title)
     args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1", "-i", str(video),
             *export.video_args(video_filter(info, pieces, size), placed, info.fps), "-fps_mode", "cfr"]
     if gpu:
@@ -225,13 +254,19 @@ def _codec_args(gpu: bool, crf: int, cq: int) -> list[str]:
     return args + ["-profile:v", "high", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
 
 
-def _transition_args(video, info, groups, transitions, measured, out, gpu, size, crf, cq, placed) -> list[str]:
-    """One FFmpeg run for a long video with transitions: a single -filter_complex for picture and sound."""
-    graph = transition_video(info, groups, transitions, size)
-    graph += ";" + overlay_mod.filter_graph("null", POST, placed or [], 1, info.fps, source="[lv]")
+def _transition_args(video, info, groups, transitions, measured, out, gpu, size, crf, cq, placed,
+                     title=None) -> list[str]:
+    """One FFmpeg run for a long video with transitions or a title card: one -filter_complex for picture and sound."""
+    inputs = []
+    if title:
+        image, seconds = title
+        inputs = ["-loop", "1", "-framerate", str(info.fps), "-t", f"{seconds + 0.2:.3f}", "-i", str(image)]
+    graph = transition_video(info, groups, transitions, size, (1, seconds) if title else None)
+    graph += ";" + overlay_mod.filter_graph("null", POST, placed or [], 2 if title else 1, info.fps, source="[lv]")
     if info.has_audio:
-        graph += ";" + transition_audio(groups, transitions, info.fps, export.audio_filter(measured) + ",aresample=48000")
-    args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1", "-i", str(video),
+        graph += ";" + transition_audio(groups, transitions, info.fps, export.audio_filter(measured) + ",aresample=48000",
+                                        seconds if title else 0.0)
+    args = [ffmpeg_path(), "-hide_banner", "-nostats", "-y", "-progress", "pipe:1", "-i", str(video), *inputs,
             *overlay_mod.image_inputs(placed or [], info.fps), "-filter_complex", graph, "-map", "[vout]",
             "-fps_mode", "cfr", *_codec_args(gpu, crf, cq)]
     if info.has_audio:
@@ -265,8 +300,9 @@ class LongExportWorker(QObject):
 
     def __init__(self, video: Path, cuts: list[Clip], duration: float, folder: Path, size: str,
                  crf: int = export.X264_QUALITY, cq: int = export.NVENC_QUALITY, placed: list | None = None,
-                 transition: str = "cut"):
+                 transition: str = "cut", title: tuple | None = None):
         super().__init__()
+        self.title = title  # (title card picture, seconds), or None
         self.video, self.cuts, self.duration, self.folder, self.size = video, cuts, duration, folder, size
         self.transition = transition  # the default join, for cuts that don't pick their own
         self.placed = placed or []  # overlays.Placed, already timed for the finished video
@@ -296,6 +332,8 @@ class LongExportWorker(QObject):
             kinds = joins(self.cuts, pieces, self.transition)
             groups, transitions, overlaps = plan(pieces, kinds, info.fps)
             length = output_length(pieces, overlaps)
+            if self.title:
+                length += self.title[1] - pause_title.title_dip(info.fps)
             self.folder.mkdir(parents=True, exist_ok=True)
             gpu = export.gpu_encoder_works()
             self.progress.emit(0.0, "Measuring the volume of the whole video (this takes a minute)")
@@ -311,13 +349,13 @@ class LongExportWorker(QObject):
             report = lambda p: self.progress.emit(p, f"Making the long video ({format_time(length, tenths=False)} long)")
             self.encoder_label = "graphics card" if gpu else "processor"
             code, log = export.run_encode(encode_args(self.video, info, pieces, measured, temp, gpu, self.size,
-                                                      self.crf, self.cq, self.placed, kinds), length, report,
-                                          self._register)
+                                                      self.crf, self.cq, self.placed, kinds, self.title), length,
+                                          report, self._register)
             if code != 0 and gpu and not self._cancelled:
                 self.encoder_label = "processor"  # the graphics card failed: use the processor instead
                 code, log = export.run_encode(encode_args(self.video, info, pieces, measured, temp, False,
-                                                          self.size, self.crf, self.cq, self.placed, kinds), length,
-                                              report, self._register)
+                                                          self.size, self.crf, self.cq, self.placed, kinds, self.title),
+                                              length, report, self._register)
             if self._cancelled:
                 self.finished.emit([], "", True)
                 return

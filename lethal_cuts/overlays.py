@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath
 
-from . import text_look
+from . import pause_title, text_look
 from .project import Clip, Overlay
 
 SHORT_FRAME = (1080, 1920)
@@ -45,6 +45,8 @@ def visible_at(overlays: list[Overlay], t: float) -> list[int]:
 def describe(o: Overlay) -> str:
     if o.kind == "card":
         return (o.card or {}).get("name", "Card")
+    if o.kind == "pause":
+        return f'"{o.text.replace("*", "").strip()[:30]}"'
     words = o.text.replace("*", "").strip()  # the highlight stars aren't shown
     first = words.splitlines()[0] if words else "(no text yet)"
     return f'"{first[:40]}"'
@@ -62,7 +64,7 @@ def forget_pictures() -> None:
 def _key(o: Overlay, w: int, h: int, letters: int | None = None) -> tuple:
     if o.kind == "card":
         return ("card", (o.card or {}).get("image", ""), round(o.size, 4), w, h)
-    return ("text", text_look.look_key(o), w, h, letters)
+    return (o.kind, text_look.look_key(o), w, h, letters)
 
 
 def render(o: Overlay, frame_w: int, frame_h: int, letters: int | None = None) -> QImage:
@@ -71,7 +73,12 @@ def render(o: Overlay, frame_w: int, frame_h: int, letters: int | None = None) -
     key = _key(o, frame_w, frame_h, letters)
     image = _cache.get(key)
     if image is None:
-        image = _render_card(o, frame_w) if o.kind == "card" else text_look.render_text(o, frame_w, letters)
+        if o.kind == "card":
+            image = _render_card(o, frame_w)
+        elif o.kind == "pause":
+            image = pause_title.render_pause(o, frame_w, frame_h, letters)  # letters = the countdown number
+        else:
+            image = text_look.render_text(o, frame_w, letters)
         if len(_cache) > 200:
             _cache.clear()
         _cache[key] = image
@@ -157,33 +164,53 @@ class Placed:
     type_rate: float = 0  # typewriter: letters a second
 
 
+def freezes_in_clip(overlays: list[Overlay], clip: Clip) -> list[tuple[float, int]]:
+    """Pause cards in a Short: (seconds into the clip where it freezes, how many seconds), in order."""
+    return sorted((o.start - clip.start, pause_title.pause_seconds(o)) for o in overlays
+                  if o.kind == "pause" and clip.start < o.start < clip.end - 0.05)
+
+
 def times_in_clip(overlays: list[Overlay], clip: Clip) -> list[tuple[Overlay, float, float]]:
-    """The overlays that show during a Short, with their times counted from the clip's start."""
+    """The overlays that show during a Short, with their times counted from the start of the finished
+    Short. Each pause card adds its seconds there, pushing everything after it later."""
+    freezes = freezes_in_clip(overlays, clip)
+
+    def out(t_clip: float) -> float:
+        return t_clip + sum(s for at, s in freezes if t_clip > at + 1e-6)
+
     found = []
     for o in overlays:
+        if o.kind == "pause":
+            if clip.start < o.start < clip.end - 0.05:
+                at = out(o.start - clip.start)
+                found.append((o, at, at + pause_title.pause_seconds(o)))
+            continue
         a, b = max(o.start, clip.start), min(o.end, clip.end)
         if b - a >= 0.05:
-            found.append((o, a - clip.start, b - clip.start))
+            found.append((o, out(a - clip.start), out(b - clip.start)))
     return found
 
 
-def to_output_time(t: float, pieces: list[tuple[float, float]], overlaps: list[float] | None = None) -> float:
+def to_output_time(t: float, pieces: list[tuple[float, float]], overlaps: list[float] | None = None,
+                   lead: float = 0.0) -> float:
     """A time in the recording, as a time in the long video (the cut parts take no time).
     overlaps: seconds each join's transition overlaps the two sides (0 for a hard cut), which
-    pulls everything after it that much earlier."""
+    pulls everything after it that much earlier. lead: the title card's time at the start."""
     out = sum(min(max(t - a, 0.0), b - a) for a, b in pieces)
     for j, d in enumerate(overlaps or []):
         if d and t >= pieces[j + 1][0]:
             out -= d
-    return max(out, 0.0)
+    return max(out, 0.0) + lead
 
 
 def times_in_long(overlays: list[Overlay], pieces: list[tuple[float, float]],
-                  overlaps: list[float] | None = None) -> list[tuple[Overlay, float, float]]:
+                  overlaps: list[float] | None = None, lead: float = 0.0) -> list[tuple[Overlay, float, float]]:
     """The overlays that show in the long video. One that runs into a cut just ends sooner."""
     found = []
     for o in overlays:
-        a, b = to_output_time(o.start, pieces, overlaps), to_output_time(o.end, pieces, overlaps)
+        if o.kind == "pause":
+            continue  # pause cards are for Shorts
+        a, b = to_output_time(o.start, pieces, overlaps, lead), to_output_time(o.end, pieces, overlaps, lead)
         if b - a >= 0.05:
             found.append((o, a, b))
     return found
@@ -201,7 +228,14 @@ def prepare(timed: list[tuple[Overlay, float, float]], frame_w: int, frame_h: in
             raise OSError(f"Couldn't save the picture for {describe(o)} in {folder}")
         cx, cy = resting_center(o, image.width(), image.height(), frame_w, frame_h)
         typed, rate = 0, 0.0
-        if o.kind == "text" and o.anim_in == "type":
+        if o.kind == "pause":
+            # One picture a second, counting down
+            typed, rate = pause_title.pause_seconds(o), 1.0
+            for n in range(1, typed + 1):
+                frame = path.with_name(f"{path.stem}_{n:04d}.png")
+                if not frame.exists() and not render(o, frame_w, frame_h, typed - n + 1).save(str(frame), "PNG"):
+                    raise OSError(f"Couldn't save the countdown pictures in {folder}")
+        elif o.kind == "text" and o.anim_in == "type":
             typed, rate = text_look.letter_count(o, frame_w), text_look.type_rate(o, end - start)
             for n in range(1, typed + 1):
                 frame = path.with_name(f"{path.stem}_{n:04d}.png")

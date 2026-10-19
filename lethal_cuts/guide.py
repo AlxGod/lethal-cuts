@@ -125,6 +125,15 @@ It shows for 4 seconds. Put <b>*stars*</b> around a word to make it stand out in
 and the shadow, or to put it all in CAPS. The next text you add starts in the style you used last.</p>
 <p><b>Typewriter.</b> Set <i>Comes in</i> to <i>Typewriter</i> and the words type themselves out letter by letter.
 The typing speeds up if needed so it finishes with time left to read it.</p>
+<p><b>"What's your play?" pause card (Shorts).</b> Find the moment just before a big decision, then click <i>+ Pause</i>.
+The Short freezes on that frame, darkens, and shows the question with a countdown (3, 2, 1) and a soft tick each second,
+then carries on so viewers see what was played. It gets people commenting what they'd have done. Change the words in the
+<i>Selected</i> box, and <i>Countdown</i> sets how many seconds (2 to 10). Press <span class="key">{preview}</span> to watch
+it in the vertical preview.</p>
+<p><b>Series title card (long videos).</b> In <i>Long video</i> mode, click <i>+ Title card</i>: type the series name, the
+episode number and who's playing, and add up to four commanders from Scryfall. Their art fills the background and their
+cards fan out along the bottom. It opens the long video for a few seconds, then dips to black into the game. The episode
+number counts up by itself after each long video you export with a title card.</p>
 <p><b>Placing and timing them</b></p>
 <ul>
 <li><b>Where:</b> drag it on the video. Drag its gold corner, use the <i>Size</i> slider, or scroll the mouse wheel over it to resize.
@@ -194,5 +203,5 @@ class GuidePage(QWidget):
                     ' &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a>'
                     ' &nbsp;|&nbsp; <a href="#shorts">Shorts tips</a></p>')
         html = (f"<h1>How to use Lethal Cuts</h1>{contents}{RECORDING}"
-                f"{STEPS.format(**keys)}{LONG.format(**keys)}{ON_SCREEN}{hotkeys}{SHORTS}")
+                f"{STEPS.format(**keys)}{LONG.format(**keys)}{ON_SCREEN.format(**keys)}{hotkeys}{SHORTS}")
         self.browser.setHtml(html)

@@ -36,7 +36,10 @@ from .record_page import RecordPage
 from .settings_page import SettingsPage
 from . import scryfall
 from .card_picker import CardPicker
-from . import text_look
+from . import pause_title, text_look
+from .title_card import TitleCardDialog
+import math
+import time
 from .overlay_panel import OverlayPanel
 from .project import Clip, Overlay, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
@@ -351,6 +354,10 @@ class MainWindow(QMainWindow):
         self.overlay_panel = OverlayPanel()
         self.overlay_panel.add_text.connect(self.add_text)
         self.overlay_panel.add_card.connect(self.add_card)
+        self.overlay_panel.add_pause.connect(self.add_pause)
+        self.overlay_panel.edit_title.connect(self.edit_title)
+        self.freeze: tuple[int, float, int] | None = None  # preview holding on a pause card: (index, began, seconds)
+        self._last_pos = 0.0
         self.overlay_panel.change_card.connect(self.change_card)
         # Fetches card pictures that went missing (a project from another PC, or a cleared cache)
         self.card_loader = scryfall.Loader(self)
@@ -780,9 +787,28 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Lethal Cuts", f"This video couldn't be played.\n\n{message}")
 
     # --- playback ---
+    def _check_freeze(self, pos: float):
+        """The vertical preview stops on each pause card for its countdown, just like the exported Short."""
+        if self.freeze:
+            index, began, seconds = self.freeze
+            if time.monotonic() - began >= seconds:
+                self.freeze = None
+                self.player.play()
+        elif self.preview_clip and self.project and self.player.playbackState() == QMediaPlayer.PlayingState:
+            for i, o in enumerate(self.project.overlays):
+                if (o.kind == "pause" and self.preview_clip.start < o.start < self.preview_clip.end
+                        and self._last_pos < o.start <= pos + 0.02):
+                    self.player.pause()
+                    self.player.setPosition(int(o.start * 1000))
+                    self.freeze = (i, time.monotonic(), pause_title.pause_seconds(o))
+                    break
+        self._last_pos = pos
+
     def toggle_play(self):
         if not self.project:
             return
+        if self.freeze:
+            self.freeze = None  # skip the rest of the countdown
         if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
         else:
@@ -827,6 +853,7 @@ class MainWindow(QMainWindow):
         if self.preview_clip and pos >= self.preview_clip.end and self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.statusBar().showMessage("End of the clip. Space watches it again; P or Esc goes back.")
+        self._check_freeze(pos)
         self.timeline.set_position(pos)
         self.time_label.setText(f"{format_time(pos)} / {format_time(self.player.duration() / 1000)}")
         self._refresh_overlay_view(pos)
@@ -967,10 +994,23 @@ class MainWindow(QMainWindow):
             self.seek(0)  # at the end: watch from the start
         self.long_preview = True
         self.preview_btn.setChecked(True)
-        self.player.play()
+        card = self.project.title_card
+        if card and self.current_time() < 0.5:
+            # From the start: the title card first, then the video
+            w, h = self._overlay_frame_size(long=True)
+            seconds = pause_title.title_seconds(card)
+            self.video.show_title(pause_title.render_title(card, w, h), seconds)
+            QTimer.singleShot(int((seconds - pause_title.TITLE_DIP / 2) * 1000), self._play_after_title)
+        else:
+            self.player.play()
         self.statusBar().showMessage("Playing the long video with the cuts skipped. P or Esc stops.")
 
+    def _play_after_title(self):
+        if self.long_preview:
+            self.player.play()
+
     def stop_preview(self):
+        self.freeze = None
         if self.long_preview:
             self.long_preview = False
             self.preview_btn.setChecked(False)
@@ -1014,12 +1054,13 @@ class MainWindow(QMainWindow):
             w, h = overlay_mod.SHORT_FRAME
             placed = [overlay_mod.prepare(overlay_mod.times_in_clip(self.project.overlays, c), w, h, work)
                       for c in clips]
+            freezes = [overlay_mod.freezes_in_clip(self.project.overlays, c) for c in clips]
         except OSError as e:
             shutil.rmtree(work, ignore_errors=True)
             QMessageBox.warning(self, "Lethal Cuts", f"The text and cards couldn't be got ready for the export:\n{e}")
             return
         dialog = ExportDialog(self.project.video_path, clips, self.export_folder(), self, crf=crf, cq=cq,
-                              placed=placed)
+                              placed=placed, freezes=freezes)
         dialog.exec()
         shutil.rmtree(work, ignore_errors=True)
         for i, file in enumerate(dialog.files):  # the files come back in clip order
@@ -1054,19 +1095,32 @@ class MainWindow(QMainWindow):
         work = self._overlay_work_folder()
         try:
             w, h = self._overlay_frame_size(long=True, exact=True)
-            pieces, overlaps = self.long_timing()
-            timed = overlay_mod.times_in_long(self.project.long_overlays, pieces, overlaps)
+            pieces, overlaps, fps = self.long_timing()
+            card = self.project.title_card
+            lead = pause_title.title_lead(card, fps)
+            timed = overlay_mod.times_in_long(self.project.long_overlays, pieces, overlaps, lead)
             placed = overlay_mod.prepare(timed, w, h, work)
+            title = None
+            if card:
+                picture = work / "title.png"
+                if not pause_title.render_title(card, w, h).save(str(picture), "PNG"):
+                    raise OSError(f"Couldn't save the title card picture in {work}")
+                title = (picture, pause_title.title_seconds(card))
         except OSError as e:
             shutil.rmtree(work, ignore_errors=True)
             QMessageBox.warning(self, "Lethal Cuts", f"The text and cards couldn't be got ready for the export:\n{e}")
             return
         worker = LongExportWorker(video, cuts, duration, folder, self.settings.long_size, crf, cq, placed,
-                                  self.settings.long_transition)
+                                  self.settings.long_transition, title)
         dialog = ExportDialog(video, [], folder, self, worker=worker,
                               title=f"Making the long video ({format_time(length, tenths=False)})...")
         dialog.exec()
         shutil.rmtree(work, ignore_errors=True)
+        if dialog.files and card and not dialog.error:
+            # The next title card starts on the next episode
+            self.settings.series_name = card.get("series", "")
+            self.settings.next_episode = max(self.settings.next_episode, int(card.get("episode", 1)) + 1)
+            self._save_settings_quietly()
         for file in dialog.files:
             self.library.add(file, video.stem, video, length, kind="long")
         if dialog.files:
@@ -1120,12 +1174,16 @@ class MainWindow(QMainWindow):
         t = self.current_time() if t is None else t
         playing = self.player.playbackState() == QMediaPlayer.PlayingState
         bounds = (self.preview_clip.start, self.preview_clip.end) if self.preview_clip else None
+        freeze = None
+        if self.freeze:
+            index, began, seconds = self.freeze
+            freeze = (index, max(math.ceil(seconds - (time.monotonic() - began)), 1))
         self.video.set_overlays(self.overlays(), t, self._overlay_crop(t), self._overlay_frame_size(),
-                                self.overlay_panel.selected_index(), not playing, bounds)
+                                self.overlay_panel.selected_index(), not playing and not self.freeze, bounds, freeze)
 
     def _refresh_overlays(self, select: int = -1):
         overlays = self.overlays()
-        self.overlay_panel.long_mode = self.long_mode
+        self.overlay_panel.set_mode(self.long_mode, self.project.title_card if self.project else None)
         self.overlay_panel.set_overlays(overlays, select)
         self.timeline.set_overlays(overlays, select)
         self.side_tabs.setTabText(1, f"On screen ({len(overlays)})" if overlays else "On screen")
@@ -1178,6 +1236,36 @@ class MainWindow(QMainWindow):
         self._changed()
         self.statusBar().showMessage(f"{picker.card['name']} added. Drag it on the video to place it, and drag its bar "
                                      "under the timeline to change when it shows.")
+
+    def add_pause(self):
+        if not self.project or self.long_mode:
+            return
+        t = self.current_time()
+        if not any(c.start < t < c.end for c in self.project.clips):
+            self.statusBar().showMessage("Move the playhead into a clip first: the pause card freezes that clip there.")
+            return
+        o = pause_title.new_pause(t)
+        self.project.overlays.append(o)
+        self.project.overlays.sort(key=lambda x: x.start)
+        self.player.pause()
+        self.side_tabs.setCurrentWidget(self.overlay_panel)
+        self._refresh_overlays(select=next(i for i, x in enumerate(self.project.overlays) if x is o))
+        self._changed()
+        self.statusBar().showMessage("Pause card added: the Short freezes here and counts down. Press P to watch it "
+                                     "in the vertical preview.")
+
+    def edit_title(self):
+        if not self.project:
+            return
+        card = self.project.title_card or pause_title.new_title(self.settings.series_name, self.settings.next_episode)
+        dialog = TitleCardDialog(card, self, picker=CardPicker)
+        if not dialog.exec():
+            return
+        self.project.title_card = None if dialog.removed else dialog.card
+        self._refresh_overlays()
+        self._changed()
+        self.statusBar().showMessage("Title card removed." if dialog.removed else
+                                     "Title card saved. Press P from the start to see it.")
 
     def change_card(self, index: int):
         overlays = self.overlays()
@@ -1350,7 +1438,7 @@ class MainWindow(QMainWindow):
         name = TRANSITIONS.get(self._join_of(cut), TRANSITIONS["cut"])[0]
         self.statusBar().showMessage(f"Cut {index + 1} now joins with: {name}. Press P to see it in the preview.")
 
-    def long_timing(self) -> tuple[list, list[float]]:
+    def long_timing(self) -> tuple[list, list[float], int]:
         """The long video's kept pieces and how much each join's transition overlaps, as the export does it."""
         duration = self.player.duration() / 1000
         try:
@@ -1359,9 +1447,9 @@ class MainWindow(QMainWindow):
             fps = 30
         pieces = snap(kept_pieces(self.project.cuts, duration), fps)
         if not pieces:
-            return pieces, []
+            return pieces, [], fps
         _, _, overlaps = plan(pieces, joins(self.project.cuts, pieces, self.settings.long_transition), fps)
-        return pieces, overlaps
+        return pieces, overlaps, fps
 
     # --- clip list ---
     def _thumb_for(self, clip: Clip) -> QImage | None:

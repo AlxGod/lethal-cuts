@@ -27,7 +27,7 @@ ZOOM_STEP = 0.8                # each wheel notch shows this much of what was sh
 LABEL_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200]  # seconds between time labels
 LABEL_GAP = 80                 # pixels wanted between time labels
 LANE_HEIGHT = 16               # the strip for cards and text
-OVERLAY_COLORS = {"text": QColor("#38b2c4"), "card": QColor("#e07a3a")}
+OVERLAY_COLORS = {"text": QColor("#38b2c4"), "card": QColor("#e07a3a"), "pause": QColor("#9b59ff")}
 EDGE_GRAB = 6                  # pixels: grabbing this close to a bar's end changes its length
 
 

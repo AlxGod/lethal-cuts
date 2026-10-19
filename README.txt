@@ -119,6 +119,16 @@ Adding text: move the playhead there, click "+ Text" and type the words.
 - "Comes in: Typewriter" types the words out letter by letter.
 - The next text you add starts in the style you used last.
 
+"What's your play?" pause card (Shorts): find the moment just before a big
+decision and click "+ Pause". The Short freezes there, shows the question with
+a 3-2-1 countdown, then carries on. Change the words and the seconds in the
+Selected box. Press P to watch it in the vertical preview.
+
+Series title card (long videos): in Long video mode click "+ Title card". Type
+the series name, episode number and who's playing, and add up to four
+commanders. It opens the video for a few seconds. The episode number counts up
+by itself after each export.
+
 Placing and timing:
 - Drag it on the video to move it. Drag its gold corner, use the Size slider or
   scroll the mouse wheel over it to resize it.
