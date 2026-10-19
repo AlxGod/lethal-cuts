@@ -21,7 +21,9 @@ HELP = {
                 "the whole game again.\n\n"
                 "Gold flags are moments marked while recording.",
     "overlays": "Cards and text shown on top of the video. + Card searches every Magic card and puts the one you "
-                "pick where the playhead is; + Text does the same with words. "
+                "pick where the playhead is; + Text does the same with words. For text, Style picks a ready-made look "
+                "(Hook, Callout, Name tag, Plain) and Edit look changes the font, colors, outline, box and shadow. "
+                "Put *stars* around words to highlight them. "
                 "Drag it on the video to place it; drag its corner, use the Size slider or scroll the mouse wheel "
                 "over it to resize it. Its bar in the strip under the timeline sets when it shows: drag the bar to "
                 "move it, or drag either end to make it show longer or shorter.\n\n"

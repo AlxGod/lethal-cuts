@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields, asdict
 from pathlib import Path
 
 PROJECT_VERSION = 1
@@ -51,11 +51,23 @@ class Overlay:
     x: float = 0.5        # where its middle is: 0 = left edge, 1 = right edge
     y: float = 0.3        # 0 = top, 1 = bottom
     size: float = 0.6     # its width, as a fraction of the video's width
-    anim_in: str = "pop"  # how it comes in: none, fade, pop or slide
+    anim_in: str = "pop"  # how it comes in: none, fade, pop, slide or type (text only: letter by letter)
     anim_out: str = "fade"
-    text: str = ""
-    style: str = "plain"
+    text: str = ""        # words between *stars* are drawn in the highlight color
+    style: str = "plain"  # the ready-made style it started from (text_look.STYLES)
     card: dict | None = None  # the card's name, picture file and Scryfall details
+    # How text looks (cards ignore these)
+    font: str = "Segoe UI"
+    weight: int = 900         # 400 normal, 700 bold, 900 extra bold
+    color: str = "#ffffff"
+    accent: str = "#ffd400"   # the highlight color for *starred* words
+    outline: float = 0.14     # outline thickness, as a fraction of the letter size (0 = none)
+    outline_color: str = "#000000"
+    shadow: bool = False
+    box: str = ""             # background box color ("#AARRGGBB" allowed), "" for none
+    stripe: bool = False      # a highlight-colored bar down the box's left side (name tags)
+    caps: bool = False        # ALL CAPITALS
+    align: str = "center"     # "center" or "left"
 
     @property
     def length(self) -> float:
@@ -64,12 +76,14 @@ class Overlay:
     @staticmethod
     def from_dict(d: dict) -> "Overlay":
         o = Overlay(str(d.get("kind", "text")), float(d["start"]), float(d["end"]))
-        for name in ("x", "y", "size"):
-            if name in d:
-                setattr(o, name, float(d[name]))
-        for name in ("anim_in", "anim_out", "text", "style"):
-            if name in d:
-                setattr(o, name, str(d[name]))
+        for f in fields(Overlay):
+            if f.name in ("kind", "start", "end", "card") or f.name not in d:
+                continue
+            kind = type(getattr(o, f.name))  # each value is read as the same type as its default
+            try:
+                setattr(o, f.name, d[f.name] if kind is bool and isinstance(d[f.name], bool) else kind(d[f.name]))
+            except (TypeError, ValueError):
+                pass  # a damaged value keeps the default
         o.card = d.get("card") if isinstance(d.get("card"), dict) else None
         return o
 

@@ -6,16 +6,46 @@ timed by dragging its bar on the timeline. This panel lists them and edits the p
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-    QPlainTextEdit, QPushButton, QSlider, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
+    QHBoxLayout, QHeaderView, QLabel, QPlainTextEdit, QPushButton, QSlider, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
 from . import overlays as ov
+from . import text_look
 from .help import HELP, HelpButton
 from .project import Overlay, format_time
 
 KIND_NAMES = {"text": "Text", "card": "Card"}
+OUTLINES = [("None", 0.0), ("Thin", 0.08), ("Medium", 0.14), ("Thick", 0.2)]
+
+
+class ColorButton(QPushButton):
+    """A small square showing a color; clicking it opens the color picker."""
+    picked = Signal(str)
+
+    def __init__(self, tip: str, alpha: bool = False, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(34, 24)
+        self.setToolTip(tip)
+        self.alpha = alpha
+        self.color = "#ffffff"
+        self.clicked.connect(self._choose)
+
+    def set_color(self, color: str):
+        self.color = color or "#000000"
+        c = QColor(self.color)
+        self.setStyleSheet(f"QPushButton {{ background: rgba({c.red()},{c.green()},{c.blue()},{c.alpha()}); "
+                           f"border: 2px solid #8a80a0; border-radius: 4px; }}")
+
+    def _choose(self):
+        options = QColorDialog.ShowAlphaChannel if self.alpha else QColorDialog.ColorDialogOption(0)
+        c = QColorDialog.getColor(QColor(self.color), self, self.toolTip(), options)
+        if c.isValid():
+            self.set_color(c.name(QColor.HexArgb) if self.alpha and c.alpha() < 255 else c.name())
+            self.picked.emit(self.color)
 
 
 class OverlayPanel(QWidget):
@@ -31,6 +61,7 @@ class OverlayPanel(QWidget):
         super().__init__(parent)
         self.overlays: list[Overlay] = []
         self._filling = False
+        self.long_mode = False  # set by the main window: styles sit in different places on long videos
 
         self.add_text_btn = QPushButton("+ Text")
         self.add_text_btn.setToolTip("Put text on the video at the playhead")
@@ -71,6 +102,77 @@ class OverlayPanel(QWidget):
         self.text_edit.textChanged.connect(self._on_text)
         self.text_label = QLabel("Text")
         form.addRow(self.text_label, self.text_edit)
+        self.text_tip = QLabel("Put *stars* around words to make them stand out in the highlight color.")
+        self.text_tip.setObjectName("dimLabel")
+        self.text_tip.setWordWrap(True)
+        form.addRow(self.text_tip)
+        # How the text looks: a ready-made style, and the details if he wants to change them
+        self.style_combo = QComboBox()
+        for key, s in text_look.STYLES.items():
+            self.style_combo.addItem(s["name"], key)
+            self.style_combo.setItemData(self.style_combo.count() - 1, s["tip"], Qt.ToolTipRole)
+        self.style_combo.setToolTip("A ready-made look. It also moves the text to where that style usually goes.")
+        self.style_combo.activated.connect(self._on_style)
+        self.custom_btn = QPushButton("Edit look")
+        self.custom_btn.setCheckable(True)
+        self.custom_btn.setToolTip("Change the font, colors, outline, box and shadow")
+        self.custom_btn.toggled.connect(lambda on: self.custom_box.setVisible(on and self._is_text()))
+        style_row = QHBoxLayout()
+        style_row.addWidget(self.style_combo, 1)
+        style_row.addWidget(self.custom_btn)
+        self.style_label = QLabel("Style")
+        form.addRow(self.style_label, style_row)
+        self.custom_box = QWidget()
+        grid = QGridLayout(self.custom_box)
+        grid.setContentsMargins(0, 0, 0, 0)
+        self.font_combo = QComboBox()
+        for label, family, weight in text_look.FONTS:
+            self.font_combo.addItem(label, (family, weight))
+        self.font_combo.insertSeparator(self.font_combo.count())
+        known = {f for _, f, _ in text_look.FONTS}
+        for family in QFontDatabase.families():
+            if family not in known and not family.startswith("@"):
+                self.font_combo.addItem(family, (family, 700))
+        self.font_combo.setMaxVisibleItems(16)
+        for combo in (self.font_combo, self.style_combo):
+            # Long names mustn't make the side panel (and the window) wider
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(3 if combo is self.style_combo else 6)
+        self.font_combo.activated.connect(self._on_look)
+        grid.addWidget(QLabel("Font"), 0, 0)
+        grid.addWidget(self.font_combo, 0, 1, 1, 4)
+        self.color_btn = ColorButton("Text color")
+        self.accent_btn = ColorButton("Highlight color (for *starred* words)")
+        self.outline_btn = ColorButton("Outline color")
+        self.box_btn = ColorButton("Box color (can be see-through)", alpha=True)
+        for b in (self.color_btn, self.accent_btn, self.outline_btn, self.box_btn):
+            b.picked.connect(self._on_look)
+        grid.addWidget(QLabel("Colors"), 1, 0)
+        grid.addWidget(self.color_btn, 1, 1)
+        grid.addWidget(QLabel("Highlight"), 1, 2)
+        grid.addWidget(self.accent_btn, 1, 3)
+        self.outline_combo = QComboBox()
+        for label, value in OUTLINES:
+            self.outline_combo.addItem(label, value)
+        self.outline_combo.activated.connect(self._on_look)
+        grid.addWidget(QLabel("Outline"), 2, 0)
+        grid.addWidget(self.outline_combo, 2, 1, 1, 2)
+        grid.addWidget(self.outline_btn, 2, 3)
+        self.box_check = QCheckBox("Box")
+        self.box_check.setToolTip("A colored box behind the text")
+        self.box_check.toggled.connect(self._on_look)
+        self.shadow_check = QCheckBox("Shadow")
+        self.shadow_check.toggled.connect(self._on_look)
+        self.caps_check = QCheckBox("CAPS")
+        self.caps_check.setToolTip("Show it all in capital letters")
+        self.caps_check.toggled.connect(self._on_look)
+        grid.addWidget(self.box_check, 3, 0)
+        grid.addWidget(self.box_btn, 3, 1)
+        grid.addWidget(self.shadow_check, 3, 2, 1, 2)
+        grid.addWidget(self.caps_check, 4, 0, 1, 2)
+        grid.setColumnStretch(4, 1)
+        self.custom_box.hide()
+        form.addRow(self.custom_box)
         self.card_name = QLabel()
         self.card_name.setWordWrap(True)
         self.change_card_btn = QPushButton("Change card...")
@@ -97,11 +199,15 @@ class OverlayPanel(QWidget):
         for key, name in ov.ANIMS.items():
             self.in_combo.addItem(name, key)
         self.in_combo.currentIndexChanged.connect(self._on_anim)
+        self.in_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.in_combo.setMinimumContentsLength(6)
         form.addRow("Comes in", self.in_combo)
         self.out_combo = QComboBox()
         for key, name in ov.ANIMS_OUT.items():
             self.out_combo.addItem(name, key)
         self.out_combo.currentIndexChanged.connect(self._on_anim)
+        self.out_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.out_combo.setMinimumContentsLength(6)
         form.addRow("Goes away", self.out_combo)
         self.jump_btn = QPushButton("Jump to it")
         self.jump_btn.clicked.connect(lambda: self.jump_requested.emit(self.selected_index()))
@@ -178,10 +284,28 @@ class OverlayPanel(QWidget):
         self.edit_box.setEnabled(o is not None)
         self._filling = True
         is_text = o is None or o.kind == "text"
-        self.text_label.setVisible(is_text)
-        self.text_edit.setVisible(is_text)
+        for w in (self.text_label, self.text_edit, self.text_tip, self.style_label, self.style_combo, self.custom_btn):
+            w.setVisible(is_text)
+        self.custom_box.setVisible(is_text and self.custom_btn.isChecked())
         for w in (self.card_label, self.card_name, self.change_card_btn):
             w.setVisible(not is_text)
+        typewriter = self.in_combo.findData("type")
+        self.in_combo.model().item(typewriter).setEnabled(is_text)  # only text can type itself out
+        if o is not None and is_text:
+            self.style_combo.setCurrentIndex(max(self.style_combo.findData(o.style), 0))
+            index = self.font_combo.findData((o.font, o.weight))
+            if index < 0:
+                index = next((i for i in range(self.font_combo.count())
+                              if (self.font_combo.itemData(i) or ("",))[0] == o.font), 0)
+            self.font_combo.setCurrentIndex(index)
+            self.color_btn.set_color(o.color)
+            self.accent_btn.set_color(o.accent)
+            self.outline_btn.set_color(o.outline_color)
+            self.box_btn.set_color(o.box or "#f0b840")
+            self.outline_combo.setCurrentIndex(min(range(len(OUTLINES)), key=lambda i: abs(OUTLINES[i][1] - o.outline)))
+            self.box_check.setChecked(bool(o.box))
+            self.shadow_check.setChecked(o.shadow)
+            self.caps_check.setChecked(o.caps)
         if o is not None and not is_text:
             card = o.card or {}
             self.card_name.setText(f"{card.get('name', 'Card')}\n{card.get('set_name', '')} #{card.get('number', '')}")
@@ -221,6 +345,30 @@ class OverlayPanel(QWidget):
         if o:
             o.size = value / 100
             self.edited.emit(row)
+
+    def _is_text(self) -> bool:
+        row = self.selected_index()
+        return not (0 <= row < len(self.overlays)) or self.overlays[row].kind == "text"
+
+    def _on_style(self):
+        row, o = self._current()
+        if o and o.kind == "text":
+            text_look.apply_style(o, self.style_combo.currentData(), self.long_mode)
+            self._show_selected(keep_text=True)
+            self.edited.emit(row)
+
+    def _on_look(self, *_):
+        row, o = self._current()
+        if not o or o.kind != "text":
+            return
+        family, weight = self.font_combo.currentData() or (o.font, o.weight)
+        o.font, o.weight = family, weight
+        o.color, o.accent, o.outline_color = self.color_btn.color, self.accent_btn.color, self.outline_btn.color
+        o.outline = self.outline_combo.currentData()
+        o.box = self.box_btn.color if self.box_check.isChecked() else ""
+        o.shadow = self.shadow_check.isChecked()
+        o.caps = self.caps_check.isChecked()
+        self.edited.emit(row)
 
     def _on_anim(self):
         row, o = self._current()

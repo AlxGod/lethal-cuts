@@ -36,6 +36,7 @@ from .record_page import RecordPage
 from .settings_page import SettingsPage
 from . import scryfall
 from .card_picker import CardPicker
+from . import text_look
 from .overlay_panel import OverlayPanel
 from .project import Clip, Overlay, Project, format_time, open_project
 from .thumbnails import ThumbnailMaker, thumbnail_time
@@ -79,6 +80,7 @@ class MainWindow(QMainWindow):
         self.last_deleted_overlay: tuple[bool, Overlay] | None = None  # (was it on the long video, the overlay)
         self._undo_overlay = False  # the last thing deleted was an overlay
         self.long_mode = False      # Editor is making a long video (marks are cuts) instead of Shorts
+        self.last_text_style = ""   # + Text starts in the style picked last
         self.long_preview = False   # playing the long video with the cuts skipped
         self._restore_position: float | None = None
 
@@ -1107,6 +1109,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_overlays(self, select: int = -1):
         overlays = self.overlays()
+        self.overlay_panel.long_mode = self.long_mode
         self.overlay_panel.set_overlays(overlays, select)
         self.timeline.set_overlays(overlays, select)
         self.side_tabs.setTabText(1, f"On screen ({len(overlays)})" if overlays else "On screen")
@@ -1120,8 +1123,9 @@ class MainWindow(QMainWindow):
         duration = self.player.duration() / 1000 or t + overlay_mod.DEFAULT_SECONDS
         start = max(min(t, duration - overlay_mod.MIN_SECONDS), 0.0)
         end = min(start + overlay_mod.DEFAULT_SECONDS, duration)
-        o = Overlay("text", round(start, 3), round(end, 3), y=0.15 if self.long_mode else 0.22,
-                    size=0.45 if self.long_mode else 0.6, text="Your text here")
+        o = Overlay("text", round(start, 3), round(end, 3), text="Your text here")
+        text_look.apply_style(o, self.last_text_style or text_look.DEFAULT_STYLE["long" if self.long_mode else "short"],
+                              self.long_mode)
         overlays = self.overlays()
         overlays.append(o)
         overlays.sort(key=lambda x: x.start)
@@ -1221,6 +1225,8 @@ class MainWindow(QMainWindow):
     def _on_overlay_edited(self, index: int):
         """Changed in the On screen panel."""
         overlays = self.overlays()
+        if 0 <= index < len(overlays) and overlays[index].kind == "text":
+            self.last_text_style = overlays[index].style  # the next text starts in the style used last
         duration = self.player.duration() / 1000
         if 0 <= index < len(overlays) and duration and overlays[index].end > duration:
             overlays[index].end = duration

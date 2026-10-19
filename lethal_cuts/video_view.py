@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QFrame, QGraphicsScene, QGraphicsTextItem, QGraphi
 
 from . import crop as cropmath
 from . import overlays as ov
+from . import text_look
 from .project import Crop, Overlay
 
 HANDLE = 12          # corner handle size in pixels
@@ -198,7 +199,9 @@ class VideoView(QGraphicsView):
             if opacity <= 0.001:
                 continue
             painter.setOpacity(opacity)
-            painter.drawImage(rect, ov.render(self.overlays[i], w_px, h_px))
+            a, b = self._shown_window(self.overlays[i])
+            letters = text_look.typed_letters(self.overlays[i], a, b, self.overlay_time)
+            painter.drawImage(rect, ov.render(self.overlays[i], w_px, h_px, letters))
         painter.setOpacity(1.0)
         if self.editing and self.selected_overlay in visible:
             rect, _ = self.overlay_rect(self.selected_overlay, animated=False)

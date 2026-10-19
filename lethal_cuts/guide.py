@@ -107,14 +107,26 @@ one in your hand. The big picture on the right shows exactly what goes on the vi
 away from then on. Export the list from Moxfield or Archidekt and keep the set codes in it: then each card opens straight on the
 exact printing you own. Lists typed one card per line work too. Other people's decks aren't needed: search finds any card.</p>
 <p><b>Adding text.</b> Move the playhead there and click <i>+ Text</i>, then type the words in the <i>Selected</i> box.
-It shows for 4 seconds.</p>
+It shows for 4 seconds. Put <b>*stars*</b> around a word to make it stand out in the highlight color:
+<i>That's *LETHAL*</i> shows LETHAL in yellow.</p>
+<p><b>Text styles.</b> Pick one from <i>Style</i>. Each also moves the text to where that style usually goes:</p>
+<ul>
+<li><b>Hook</b>: a big headline in capitals at the top, for the first seconds of a Short ("HE HAD THE ANSWER").</li>
+<li><b>Callout</b>: dark words in a gold box, to point something out ("Turn 4 combo").</li>
+<li><b>Name tag</b>: a small dark tag in the bottom corner with a gold edge, for who's who ("Alex, Atraxa").</li>
+<li><b>Plain</b>: white words with a black outline.</li>
+</ul>
+<p>Click <i>Edit look</i> to change the font, the text and highlight colors, the outline, the box (its color can be see-through)
+and the shadow, or to put it all in CAPS. The next text you add starts in the style you used last.</p>
+<p><b>Typewriter.</b> Set <i>Comes in</i> to <i>Typewriter</i> and the words type themselves out letter by letter.
+The typing speeds up if needed so it finishes with time left to read it.</p>
 <p><b>Placing and timing them</b></p>
 <ul>
 <li><b>Where:</b> drag it on the video. Drag its gold corner, use the <i>Size</i> slider, or scroll the mouse wheel over it to resize.
 On Shorts it sits inside the tall crop box, so you see exactly where it lands on the phone video.</li>
 <li><b>When:</b> each one has a bar in the strip under the timeline. Drag the bar to move it; drag either end to make it show
 longer or shorter. <i>Shows for</i> sets the length in seconds.</li>
-<li><b>How it moves:</b> <i>Comes in</i> and <i>Goes away</i> pick Pop, Fade, Slide or None.</li>
+<li><b>How it moves:</b> <i>Comes in</i> and <i>Goes away</i> pick Pop, Fade, Slide or None (text can also use Typewriter).</li>
 <li><b>Changing a card:</b> pick it and click <i>Change card...</i> to swap the card or the printing.</li>
 <li><b>Deleting:</b> pick it and press Delete (or the Delete button). Ctrl+Z brings it back.</li>
 </ul>

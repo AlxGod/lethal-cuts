@@ -11,22 +11,23 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath
 
+from . import text_look
 from .project import Clip, Overlay
 
 SHORT_FRAME = (1080, 1920)
 ANIM_SECONDS = 0.3     # how long coming in or going out takes
 POP_FROM = 0.6         # "pop" grows from this size
-ANIMS = {"none": "None", "fade": "Fade", "pop": "Pop", "slide": "Slide in from the side"}
+ANIMS = {"none": "None", "fade": "Fade", "pop": "Pop", "slide": "Slide in from the side",
+         "type": "Typewriter (letter by letter)"}
 ANIMS_OUT = {"none": "None", "fade": "Fade", "pop": "Pop", "slide": "Slide out to the side"}
 DEFAULT_SECONDS = 4.0  # text
 CARD_SECONDS = 5.0
 MIN_SECONDS = 0.5
 MIN_SIZE, MAX_SIZE = 0.1, 1.0
 TEXT_FONT = "Segoe UI"
-TEXT_WRAP = 0.9        # text wraps at this fraction of the video's width
 CARD_CORNER = 0.045    # Magic cards' rounded corners, as a fraction of their width
 
 
@@ -44,7 +45,8 @@ def visible_at(overlays: list[Overlay], t: float) -> list[int]:
 def describe(o: Overlay) -> str:
     if o.kind == "card":
         return (o.card or {}).get("name", "Card")
-    first = o.text.strip().splitlines()[0] if o.text.strip() else "(no text yet)"
+    words = o.text.replace("*", "").strip()  # the highlight stars aren't shown
+    first = words.splitlines()[0] if words else "(no text yet)"
     return f'"{first[:40]}"'
 
 
@@ -57,69 +59,22 @@ def forget_pictures() -> None:
     _cache.clear()
 
 
-def _key(o: Overlay, w: int, h: int) -> tuple:
-    card = (o.card or {}).get("image", "")
-    return (o.kind, o.text, o.style, round(o.size, 4), card, w, h)
+def _key(o: Overlay, w: int, h: int, letters: int | None = None) -> tuple:
+    if o.kind == "card":
+        return ("card", (o.card or {}).get("image", ""), round(o.size, 4), w, h)
+    return ("text", text_look.look_key(o), w, h, letters)
 
 
-def render(o: Overlay, frame_w: int, frame_h: int) -> QImage:
-    """The overlay as a picture with a see-through background, at the finished video's size."""
-    key = _key(o, frame_w, frame_h)
+def render(o: Overlay, frame_w: int, frame_h: int, letters: int | None = None) -> QImage:
+    """The overlay as a picture with a see-through background, at the finished video's size.
+    letters: for the typewriter, how many letters are showing so far (None = all)."""
+    key = _key(o, frame_w, frame_h, letters)
     image = _cache.get(key)
     if image is None:
-        image = _render_card(o, frame_w) if o.kind == "card" else _render_text(o, frame_w)
-        if len(_cache) > 60:
+        image = _render_card(o, frame_w) if o.kind == "card" else text_look.render_text(o, frame_w, letters)
+        if len(_cache) > 200:
             _cache.clear()
         _cache[key] = image
-    return image
-
-
-def text_font(o: Overlay, frame_w: int) -> QFont:
-    font = QFont(TEXT_FONT)
-    font.setPixelSize(max(int(o.size * frame_w * 0.15), 8))
-    font.setWeight(QFont.Black)
-    return font
-
-
-def _wrap(text: str, metrics: QFontMetricsF, width: float) -> list[str]:
-    lines = []
-    for paragraph in (text or " ").splitlines() or [" "]:
-        line = ""
-        for word in paragraph.split(" "):
-            test = f"{line} {word}" if line else word
-            if line and metrics.horizontalAdvance(test) > width:
-                lines.append(line)
-                line = word
-            else:
-                line = test
-        lines.append(line)
-    return lines
-
-
-def _render_text(o: Overlay, frame_w: int) -> QImage:
-    """White bold text with a thick black outline: readable on any part of the video."""
-    font = text_font(o, frame_w)
-    metrics = QFontMetricsF(font)
-    lines = _wrap(o.text.strip() or "Your text", metrics, frame_w * TEXT_WRAP)
-    outline = max(font.pixelSize() * 0.14, 2.0)
-    line_h = metrics.height()
-    width = max(metrics.horizontalAdvance(line) for line in lines)
-    pad = outline + 2
-    image = QImage(int(width + pad * 2) + 1, int(line_h * len(lines) + pad * 2) + 1, QImage.Format_ARGB32_Premultiplied)
-    image.fill(Qt.transparent)
-    path = QPainterPath()
-    for i, line in enumerate(lines):
-        x = pad + (width - metrics.horizontalAdvance(line)) / 2  # centered lines
-        path.addText(QPointF(x, pad + i * line_h + metrics.ascent()), font, line)
-    p = QPainter(image)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setPen(QPen(QColor(0, 0, 0), outline * 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-    p.setBrush(Qt.NoBrush)
-    p.drawPath(path)  # the outline is drawn first and twice as wide, so half of it shows around the letters
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor(255, 255, 255))
-    p.drawPath(path)
-    p.end()
     return image
 
 
@@ -198,6 +153,8 @@ class Placed:
     anim_in: str
     anim_out: str
     slide_off: float
+    typed: int = 0        # typewriter: how many pictures (one more letter each), named <image stem>_0001.png...
+    type_rate: float = 0  # typewriter: letters a second
 
 
 def times_in_clip(overlays: list[Overlay], clip: Clip) -> list[tuple[Overlay, float, float]]:
@@ -236,8 +193,15 @@ def prepare(timed: list[tuple[Overlay, float, float]], frame_w: int, frame_h: in
         if not path.exists() and not image.save(str(path), "PNG"):
             raise OSError(f"Couldn't save the picture for {describe(o)} in {folder}")
         cx, cy = resting_center(o, image.width(), image.height(), frame_w, frame_h)
+        typed, rate = 0, 0.0
+        if o.kind == "text" and o.anim_in == "type":
+            typed, rate = text_look.letter_count(o, frame_w), text_look.type_rate(o, end - start)
+            for n in range(1, typed + 1):
+                frame = path.with_name(f"{path.stem}_{n:04d}.png")
+                if not frame.exists() and not render(o, frame_w, frame_h, n).save(str(frame), "PNG"):
+                    raise OSError(f"Couldn't save the typewriter pictures for {describe(o)} in {folder}")
         placed.append(Placed(path, start, end, cx, cy, image.width(), image.height(), o.anim_in, o.anim_out,
-                             slide_offsets(cx, image.width(), frame_w)))
+                             slide_offsets(cx, image.width(), frame_w), typed, rate))
     return placed
 
 
@@ -251,7 +215,12 @@ def image_inputs(placed: list[Placed], fps: int) -> list[str]:
     holds one copy of it in memory, not a queue of copies waiting for their turn."""
     args = []
     for p in placed:
-        args += ["-i", str(p.image)]
+        if p.typed:
+            # Typewriter: one picture per letter, played as a short video at the typing speed
+            pattern = p.image.with_name(f"{p.image.stem}_%04d.png")
+            args += ["-framerate", f"{p.type_rate:.4f}", "-start_number", "1", "-i", str(pattern)]
+        else:
+            args += ["-i", str(p.image)]
     return args
 
 
@@ -265,7 +234,13 @@ def filter_graph(pre: str, post: str, placed: list[Placed], first_input: int, fp
         a = anim_seconds(e - s)
         k_in, k_out = f"clip((t-{s:.4f})/{a:.4f},0,1)", f"clip(({e:.4f}-t)/{a:.4f},0,1)"
         frames = max(int(round((e - s) * fps)) + 1, 1)
-        steps = ["format=rgba", f"loop=loop={frames - 1}:size=1:start=0", f"setpts=N/{fps}/TB+{s:.4f}/TB"]
+        if p.typed:
+            # The letters arrive at the typing speed; the last picture then holds until it goes away
+            hold = max(e - s - p.typed / p.type_rate, 0) + 0.2
+            steps = ["format=rgba", f"setpts=PTS-STARTPTS+{s:.4f}/TB", f"fps={fps}",
+                     f"tpad=stop_mode=clone:stop_duration={hold:.3f}"]
+        else:
+            steps = ["format=rgba", f"loop=loop={frames - 1}:size=1:start=0", f"setpts=N/{fps}/TB+{s:.4f}/TB"]
         if p.anim_in in ("fade", "pop"):
             steps.append(f"fade=t=in:st={s:.4f}:d={a:.4f}:alpha=1")
         if p.anim_out in ("fade", "pop"):
