@@ -38,6 +38,8 @@ from . import scryfall
 from .card_picker import CardPicker
 from . import pause_title, text_look
 from .title_card import TitleCardDialog
+from . import clicker
+from .clicker_dialog import ClickerDialog
 import math
 import time
 from .overlay_panel import OverlayPanel
@@ -163,11 +165,18 @@ class MainWindow(QMainWindow):
         self.prev_moment_btn.clicked.connect(lambda: self.jump_moment(-1))
         self.next_moment_btn = QPushButton("Moment >")
         self.next_moment_btn.clicked.connect(lambda: self.jump_moment(1))
+        self.clicker_btn = QPushButton("Clicker...")
+        self.clicker_btn.setToolTip("Find the clicks of a dog-training clicker pressed during an in-person game")
+        self.clicker_btn.clicked.connect(self.open_clicker)
         moment_row.addWidget(self.moment_count)
         moment_row.addWidget(self.prev_moment_btn)
         moment_row.addWidget(self.next_moment_btn)
         moment_row.addWidget(HelpButton(HELP["moments"]))
+        moment_row.addSpacing(12)
+        moment_row.addWidget(self.clicker_btn)
         self.moment_box.hide()
+        self._click_scan: clicker.ClickScan | None = None
+        self._click_thread: QThread | None = None
         controls = QHBoxLayout()
         controls.addLayout(with_help(self.open_btn, "open"))
         controls.addSpacing(12)
@@ -737,19 +746,91 @@ class MainWindow(QMainWindow):
         self.timeline.set_duration(ms / 1000)
         self._refresh_position()
         self._refresh_long_summary()
+        if ms > 0:
+            QTimer.singleShot(0, self._auto_scan_clicks)
+
+    # --- clicker ---
+    def open_clicker(self):
+        if not self.project:
+            return
+        self.player.pause()
+        dialog = ClickerDialog(self.project.video_path, self.player.duration() / 1000, self.current_time(), self)
+        dialog.found.connect(self.apply_clicks)
+        dialog.removed.connect(self.remove_clicks)
+        dialog.exec()
+
+    def apply_clicks(self, times: list):
+        """A click scan finished: its clicks replace this video's earlier click markers."""
+        if not self.project:
+            return
+        self.project.markers = sorted([m for m in self.project.markers if m.get("kind") != "click"] +
+                                      [{"t": float(t), "kind": "click"} for t in times], key=lambda m: m["t"])
+        self.project.scanned["click"] = True
+        self._refresh_moments()
+        self._changed()
+
+    def remove_clicks(self):
+        if self.project:
+            self.project.markers = [m for m in self.project.markers if m.get("kind") != "click"]
+            self._refresh_moments()
+            self._changed()
+
+    def _auto_scan_clicks(self):
+        """Once the clicker is learned, each newly opened video is checked for clicks in the background."""
+        template = clicker.load_template()
+        if not template or not self.project or self.project.scanned.get("click") or self._click_thread:
+            return
+        self._click_video = self.project.video_path
+        self._click_scan = clicker.ClickScan(self._click_video, self.player.duration() / 1000, template["spectrum"],
+                                             template["match"])
+        self._click_thread = QThread(self)
+        self._click_scan.moveToThread(self._click_thread)
+        self._click_thread.started.connect(self._click_scan.run)
+        self._click_scan.progress.connect(self._on_click_progress)
+        self._click_scan.finished.connect(self._on_click_scan_done)
+        self._click_scan.finished.connect(self._click_thread.quit)
+        self._click_thread.start()
+
+    def _on_click_progress(self, fraction: float):
+        self.statusBar().showMessage(f"Listening for clicker clicks... {int(fraction * 100)}%")
+
+    def _on_click_scan_done(self, times: list, error: str):
+        self._click_thread.wait(2000)
+        self._click_thread, self._click_scan = None, None
+        if error:
+            self.statusBar().showMessage(error)
+        elif self.project and self.project.video_path == self._click_video:
+            self.apply_clicks(times)
+            self.statusBar().showMessage(f"Found {len(times)} clicker click{'s' if len(times) != 1 else ''} "
+                                         "(cyan flags on the timeline)." if times else "No clicker clicks in this video.")
 
     # --- moments marked while recording ---
+    def marks(self) -> list[float]:
+        """Every marked moment: F8 presses, clicker clicks and "clip that"s, in time order."""
+        if not self.project:
+            return []
+        return sorted(self.project.moments + [float(m["t"]) for m in self.project.markers])
+
     def _refresh_moments(self):
         moments = self.project.moments if self.project else []
-        self.timeline.set_moments(moments, self.settings.moment_minutes * 60)
-        self.moment_count.setText(f"{len(moments)} moment{'s' if len(moments) != 1 else ''}")
-        self.moment_box.setVisible(bool(moments))
+        markers = self.project.markers if self.project else []
+        self.timeline.set_moments(moments, self.settings.moment_minutes * 60, markers)
+        parts = []
+        for count, word in ((len(moments), "moment"), (sum(m.get("kind") == "click" for m in markers), "click"),
+                            (sum(m.get("kind") == "speech" for m in markers), '"clip that"')):
+            if count:
+                parts.append(f"{count} {word}{'s' if count != 1 and not word.startswith(chr(34)) else ''}")
+        self.moment_count.setText(", ".join(parts) or "No moments marked")
+        has = bool(parts)
+        self.prev_moment_btn.setEnabled(has)
+        self.next_moment_btn.setEnabled(has)
+        self.moment_box.setVisible(self.project is not None)
 
     def jump_moment(self, direction: int):
         """Jumps to a few minutes before the next (or previous) press of the moment key."""
         if not self.project:
             return
-        moments = self.project.moments
+        moments = self.marks()
         if not moments:
             self.statusBar().showMessage(f"No moments were marked in this video. While recording, press "
                                          f"{self.settings.moment_key} when something great happens.")
@@ -1651,6 +1732,10 @@ class MainWindow(QMainWindow):
                 return
             self.record_page.shutdown()
         self.save_now()
+        if self._click_scan:
+            self._click_scan.cancel()
+            self._click_thread.quit()
+            self._click_thread.wait(5000)
         self.thumbs.stop()
         self.post_page.shutdown()
         super().closeEvent(event)

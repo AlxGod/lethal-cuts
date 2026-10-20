@@ -100,6 +100,8 @@ class Project:
     overlays: list[Overlay] = field(default_factory=list)       # cards and text on the Shorts
     long_overlays: list[Overlay] = field(default_factory=list)  # cards and text on the long video
     title_card: dict | None = None  # the long video's opening title card (pause_title.new_title)
+    markers: list[dict] = field(default_factory=list)  # found in the sound: {"t": seconds, "kind": "click" or "speech"}
+    scanned: dict = field(default_factory=dict)        # which scans have run on this video, e.g. {"click": true}
 
     @property
     def path(self) -> Path:
@@ -134,6 +136,8 @@ class Project:
             "overlays": [asdict(o) for o in self.overlays],
             "long_overlays": [asdict(o) for o in self.long_overlays],
             "title_card": self.title_card,
+            "markers": self.markers,
+            "scanned": self.scanned,
         }
         # Write to a temporary file first, then swap it in, so a crash mid-save
         # can never leave a half-written project file behind.
@@ -163,8 +167,10 @@ def open_project(video_path: Path) -> Project:
     overlays = sorted((Overlay.from_dict(o) for o in data.get("overlays", [])), key=lambda o: o.start)
     long_overlays = sorted((Overlay.from_dict(o) for o in data.get("long_overlays", [])), key=lambda o: o.start)
     title = data.get("title_card") if isinstance(data.get("title_card"), dict) else None
+    markers = sorted((m for m in data.get("markers", []) if isinstance(m, dict) and "t" in m), key=lambda m: m["t"])
+    scanned = data.get("scanned") if isinstance(data.get("scanned"), dict) else {}
     return Project(video_path, clips, float(data.get("position", 0.0)), Crop.from_dict(data.get("last_crop")), cuts,
-                   moments, overlays, long_overlays, title)
+                   moments, overlays, long_overlays, title, markers, scanned)
 
 
 def format_time(seconds: float, tenths: bool = True) -> str:

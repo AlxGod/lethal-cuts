@@ -41,9 +41,15 @@ but recording without it looks best. On iPhone: Settings &gt; Camera &gt; Record
 <li><b>Plug the phone in</b> and turn on Do Not Disturb, so a dead battery or a phone call doesn't stop the recording.</li>
 <li><b>Mount the phone over the table</b>, looking down, so every player's cards are in the shot. Try not to bump it during the game:
 the crop box carries over from clip to clip because the camera usually stays put.</li>
-<li><b>Clicker and "clip that"</b> <span class="soon">(coming in a later update)</span>: press a dog-training clicker or say
-"clip that" when something great happens, and Lethal Cuts will drop a marker there for you.</li>
+<li><b>Mark great moments with a clicker.</b> Keep a dog-training clicker (a few dollars at a pet store) by the table and
+click it when something great happens. Each click becomes a cyan flag on the timeline, and <i>Moment &gt;</i> jumps to the
+minutes before it, just like F8.</li>
 </ul>
+<p><b>Teaching Lethal Cuts your clicker (once).</b> Open a recording with a click in it, play it at 1x and stop with the
+playhead right on a click. Click <i>Clicker...</i> (under the timeline), then <i>Learn the click</i>, then <i>Find clicks in
+this video</i>. From then on, every video you open is checked for clicks by itself (it takes about a minute for a 3-hour game).
+Lethal Cuts tells clicks apart from card slaps and shuffling by their sound; if it misses some, move the slider towards
+<i>Finds more</i>, and if it flags other sounds, towards <i>Stricter</i>.</p>
 """
 
 STEPS = """

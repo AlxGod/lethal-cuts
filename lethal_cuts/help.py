@@ -48,7 +48,10 @@ HELP = {
     "moments": "Moments you marked while recording, by pressing the moment key (F8 unless you changed it) when "
                "something great happened. Each one is a gold flag on the timeline, with the few minutes before it "
                "shaded gold. Moment > (key N) jumps to the start of the next one, so you can watch the lead-up and "
-               "mark the best part with I and O, without watching the whole game. < Moment (Shift+N) goes back.",
+               "mark the best part with I and O, without watching the whole game. < Moment (Shift+N) goes back.\n\n"
+               "Playing in person? Press a dog-training clicker when something great happens. Teach Lethal Cuts "
+               "your clicker once (Clicker...), and every video you open gets a cyan flag at each click. Someone "
+               "saying \"clip that\" gets a pink flag.",
     "record": "For games played on the computer, like Tabletop Simulator. Click Start recording and Lethal Cuts "
               "starts OBS (the free recorder) by the clock, recording the game window, your computer's sound "
               "(the game and your friends on Discord) and your microphone. Click Stop recording when the game's "

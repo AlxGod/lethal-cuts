@@ -22,6 +22,7 @@ PLAYHEAD_COLOR = QColor("#ffffff")
 PENDING_COLOR = QColor("#40c08a")
 CUT_COLOR = QColor("#d0404a")  # long videos: the parts being cut out
 MOMENT_COLOR = QColor("#f0b840")
+MARKER_COLORS = {"click": QColor("#38d0e0"), "speech": QColor("#ff5fa2")}  # clicker clicks, "clip that"
 MIN_VIEW_SECONDS = 20.0        # the most it zooms in
 ZOOM_STEP = 0.8                # each wheel notch shows this much of what was shown
 LABEL_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200]  # seconds between time labels
@@ -48,6 +49,7 @@ class Timeline(QWidget):
         self.selected = -1
         self.pending_start: float | None = None
         self.moments: list[float] = []
+        self.markers: list[dict] = []
         self.moment_window = 300.0  # each moment covers this many seconds before it
         self.clip_colors = list(CLIP_COLORS)
         self.cut_style = False  # True while making a long video: the bars are cuts
@@ -80,10 +82,16 @@ class Timeline(QWidget):
         self.selected = selected
         self.update()
 
-    def set_moments(self, moments: list[float], window: float) -> None:
+    def set_moments(self, moments: list[float], window: float, markers: list[dict] | None = None) -> None:
+        """moments: F8 presses. markers: found in the sound ({"t", "kind"}); drawn the same way in their own colors."""
         self.moments = list(moments)
         self.moment_window = window
+        self.markers = list(markers or [])
         self.update()
+
+    def _flags(self) -> list[tuple[float, QColor]]:
+        return [(m, MOMENT_COLOR) for m in self.moments] + [
+            (float(m["t"]), MARKER_COLORS.get(m.get("kind"), MOMENT_COLOR)) for m in self.markers]
 
     def set_overlays(self, overlays: list[Overlay], selected: int = -1) -> None:
         self.overlays = overlays
@@ -194,12 +202,12 @@ class Timeline(QWidget):
                 secs += step
 
         p.setClipRect(track)
-        # Moments marked while recording: a gold window over the minutes before each key press
-        for m in self.moments:
+        # Moments marked while recording (and markers found in the sound): a window over the minutes before each
+        for m, color in self._flags():
             x1, x2 = self._x(m - self.moment_window), self._x(m)
             if x2 < track.left() or x1 > track.right():
                 continue
-            shade = QColor(MOMENT_COLOR)
+            shade = QColor(color)
             shade.setAlpha(45)
             p.setPen(Qt.NoPen)
             p.setBrush(shade)
@@ -234,15 +242,15 @@ class Timeline(QWidget):
                 p.setPen(QColor("#ffffff"))
                 p.drawText(visible, Qt.AlignCenter, label)
 
-        # Moment flags: where the key was pressed
-        for m in self.moments:
+        # Moment flags: where the key was pressed, the clicker clicked or someone said "clip that"
+        for m, color in self._flags():
             x = self._x(m)
             if not track.left() - 1 <= x <= track.right() + 1:
                 continue
-            p.setPen(QPen(MOMENT_COLOR, 2))
+            p.setPen(QPen(color, 2))
             p.drawLine(int(x), int(track.top()), int(x), int(track.bottom()))
             p.setPen(Qt.NoPen)
-            p.setBrush(MOMENT_COLOR)
+            p.setBrush(color)
             top = track.top()
             p.drawPolygon(QPolygonF([QPointF(x, top), QPointF(x - 6, top), QPointF(x, top + 8)]))
 

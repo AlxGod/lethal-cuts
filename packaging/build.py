@@ -77,7 +77,7 @@ def build_app() -> Path:
         "--workpath", str(BUILD / "work"), "--specpath", str(BUILD / "spec"), "--distpath", str(BUILD / "dist"),
         "--paths", str(ROOT),
         "--add-data", f"{icon}{sep}.",
-        "--exclude-module", "tkinter", "--exclude-module", "numpy", "--exclude-module", "PIL",
+        "--exclude-module", "tkinter", "--exclude-module", "PIL",  # numpy is needed (clicker, speech)
         str(ROOT / "packaging" / "launch.py"),
     ], check=True)
     app = BUILD / "dist" / APP_NAME

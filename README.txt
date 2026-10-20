@@ -55,6 +55,11 @@ In person, on an iPhone:
 - Clear space first: 4K is about 10 GB an hour, so a 3-hour game needs 30 GB.
 - Plug the phone in and turn on Do Not Disturb.
 - Mount the phone over the table, looking down, and try not to bump it.
+- Keep a dog-training clicker by the table and click it when something great
+  happens. Each click becomes a cyan flag on the timeline (like F8). Teach
+  Lethal Cuts your clicker once: open a recording, stop with the playhead right
+  on a click, click "Clicker..." under the timeline, then "Learn the click" and
+  "Find clicks in this video". After that every video is checked by itself.
 Copy the video to your PC (the .mov file works as it is, no converting) and
 open it in the Editor.
 
