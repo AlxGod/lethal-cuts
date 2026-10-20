@@ -13,7 +13,7 @@ play on the computer, like Tabletop Simulator.
 
 INSTALLING
 ----------
-1. Double-click "Lethal Cuts Setup 0.4.4.exe".
+1. Double-click "Lethal Cuts Setup 0.5.0.exe".
 2. Windows will probably show a blue box: "Windows protected your PC".
    That's normal for programs made by a person rather than a big company.
    Click "More info", then "Run anyway".

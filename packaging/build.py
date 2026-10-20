@@ -78,6 +78,8 @@ def build_app() -> Path:
         "--paths", str(ROOT),
         "--add-data", f"{icon}{sep}.",
         "--exclude-module", "tkinter", "--exclude-module", "PIL",  # numpy is needed (clicker, speech)
+        # The speech engine: faster-whisper's voice detector model, and CTranslate2's own DLLs
+        "--collect-data", "faster_whisper", "--collect-binaries", "ctranslate2",
         str(ROOT / "packaging" / "launch.py"),
     ], check=True)
     app = BUILD / "dist" / APP_NAME

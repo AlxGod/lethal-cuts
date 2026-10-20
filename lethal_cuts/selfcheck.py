@@ -91,6 +91,42 @@ def run_check(log_path: Path, quiet: bool) -> int:
             v = next(s for s in streams if s["codec_type"] == "video")
             good = (v["width"], v["height"]) == (1080, 1920)
         report(good, "Exported a vertical 1080x1920 test clip" + (f": {error[-300:]}" if error else ""))
+
+        # The same clip with text on it and a pause card (the overlay, freeze and countdown parts of the export)
+        from . import overlays, pause_title
+        from .project import Overlay
+        clip = Clip(0.2, 2.2, "check overlays")
+        text = Overlay("text", 0.5, 1.5, text="Check *this*", anim_in="type")
+        pause = pause_title.new_pause(1.0)
+        pause.end = pause.start + 2
+        timed = overlays.times_in_clip([text, pause], clip)
+        placed = overlays.prepare(timed, 1080, 1920, work / "pictures")
+        worker = ExportWorker(video, [clip], work / "out2", placed=[placed],
+                              freezes=[overlays.freezes_in_clip([text, pause], clip)])
+        result = []
+        worker.finished.connect(lambda files, error, cancelled: result.append((files, error)))
+        worker.run()
+        files, error = result[0] if result else ([], "no result")
+        length = 0.0
+        if files and not error:
+            streams = json.loads(run_hidden([ffprobe, "-v", "error", "-show_streams", "-of", "json", files[0]], timeout=60).stdout)["streams"]
+            length = float(next(s for s in streams if s["codec_type"] == "video")["duration"])
+        report(abs(length - 4.0) < 0.1, "Exported a clip with text and a pause card" + (f": {error[-300:]}" if error else ""))
+
+        # The speech engine (captions and "clip that"): it loads, and its voice detector runs
+        try:
+            import numpy as np
+            from faster_whisper.vad import get_speech_timestamps
+            import ctranslate2
+            get_speech_timestamps(np.zeros(16000, dtype=np.float32))
+            report(True, f"Speech engine loads (CTranslate2 {ctranslate2.__version__})")
+        except Exception as e:
+            report(False, f"Speech engine didn't load: {e}")
+        from . import speech
+        from .settings import load as load_settings
+        model = load_settings().speech_model
+        lines.append(f"        Speech model {model}: {'downloaded' if speech.model_installed(model) else 'not downloaded yet'}; "
+                     f"graphics card pack: {'downloaded' if speech.gpu_pack_installed() else 'not downloaded'}")
     except Exception as e:
         report(False, str(e))
     finally:
