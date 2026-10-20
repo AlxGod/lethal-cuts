@@ -1512,6 +1512,7 @@ class MainWindow(QMainWindow):
         self.player.pause()
         self.side_tabs.setCurrentWidget(self.overlay_panel)
         self._refresh_overlays(select=index)
+        self._jump_to_overlay(index)  # just past its way in, or the Editor shows an empty outline
         self.overlay_panel.focus_text()
         self._changed()
         self.statusBar().showMessage("Text added. Type the words, drag it on the video to place it, and drag its bar "
@@ -1536,8 +1537,10 @@ class MainWindow(QMainWindow):
         overlays = self.overlays()
         overlays.append(o)
         overlays.sort(key=lambda x: x.start)
+        index = next(i for i, x in enumerate(overlays) if x is o)
         self.side_tabs.setCurrentWidget(self.overlay_panel)
-        self._refresh_overlays(select=next(i for i, x in enumerate(overlays) if x is o))
+        self._refresh_overlays(select=index)
+        self._jump_to_overlay(index)  # just past its way in, or the Editor shows an empty outline
         self._changed()
         self.statusBar().showMessage(f"{picker.card['name']} added. Drag it on the video to place it, and drag its bar "
                                      "under the timeline to change when it shows.")
