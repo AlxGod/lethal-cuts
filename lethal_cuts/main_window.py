@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QImage, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
     QMessageBox, QPushButton, QScrollBar, QSlider, QSplitter, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -40,6 +40,10 @@ from . import pause_title, text_look
 from .title_card import TitleCardDialog
 from . import clicker
 from .clicker_dialog import ClickerDialog
+from . import speech
+from .speech_dialog import SpeechDialog
+from . import captions
+from .caption_editor import CaptionEditor
 import math
 import time
 from .overlay_panel import OverlayPanel
@@ -174,6 +178,13 @@ class MainWindow(QMainWindow):
         moment_row.addWidget(HelpButton(HELP["moments"]))
         moment_row.addSpacing(12)
         moment_row.addWidget(self.clicker_btn)
+        self.speech_btn = QPushButton("Speech...")
+        self.speech_btn.setToolTip("Captions and \"clip that\" markers: Lethal Cuts listens to the game on this PC")
+        self.speech_btn.clicked.connect(self.open_speech)
+        moment_row.addWidget(self.speech_btn)
+        self.words: list | None = None  # this video's words with their times, once it's been listened to
+        self._listener: speech.Transcriber | None = None
+        self._listen_thread: QThread | None = None
         self.moment_box.hide()
         self._click_scan: clicker.ClickScan | None = None
         self._click_thread: QThread | None = None
@@ -352,6 +363,37 @@ class MainWindow(QMainWindow):
         self.limit_note.verified.connect(lambda: self.set_youtube_verified(True))
         clips_layout.addWidget(self.limit_note)
         clips_layout.addWidget(self.nudge_box)
+        # Captions on the picked Short
+        self.caption_box = QGroupBox("Captions")
+        cap = QGridLayout(self.caption_box)
+        self.caption_check = QCheckBox("On this clip")
+        self.caption_check.setToolTip("Burn the words said into this Short, a few at a time")
+        self.caption_check.toggled.connect(self._on_caption_check)
+        self.fix_words_btn = QPushButton("Fix words...")
+        self.fix_words_btn.setToolTip("Correct what Lethal Cuts heard, in this clip or all through the game")
+        self.fix_words_btn.clicked.connect(self.fix_words)
+        self.caption_style = QComboBox()
+        for key, label in captions.STYLES.items():
+            self.caption_style.addItem(label, key)
+        self.caption_style.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.caption_style.setMinimumContentsLength(6)
+        self.caption_style.setToolTip("How the captions look on every Short")
+        self.caption_style.activated.connect(self._on_caption_look)
+        self.caption_pos = QComboBox()
+        for key, (label, _) in captions.POSITIONS.items():
+            self.caption_pos.addItem(label, key)
+        self.caption_pos.setToolTip("Where the captions sit on every Short")
+        self.caption_pos.activated.connect(self._on_caption_look)
+        self.caption_note = QLabel("Captions appear once the game has been listened to (Speech... under the timeline).")
+        self.caption_note.setObjectName("dimLabel")
+        self.caption_note.setWordWrap(True)
+        cap.addWidget(self.caption_check, 0, 0)
+        cap.addWidget(self.fix_words_btn, 0, 1)
+        cap.addWidget(HelpButton(HELP["captions"]), 0, 2)
+        cap.addWidget(self.caption_style, 1, 0)
+        cap.addWidget(self.caption_pos, 1, 1)
+        cap.addWidget(self.caption_note, 2, 0, 1, 3)
+        clips_layout.addWidget(self.caption_box)
         self.preview_help = HelpButton(HELP["preview"])
         self.export_help = HelpButton(HELP["export"])
         clip_buttons = QHBoxLayout()
@@ -629,7 +671,8 @@ class MainWindow(QMainWindow):
              f"Play at 2x, 3x or 4x speed to get through a long game fast. The arrow keys jump {s.step_seconds:g} seconds."),
             (self.mark_out_btn, "3. Mark the good moments",
              f"Press {s.key('mark_start')} when something great starts and {s.key('mark_end')} when it ends. "
-             "The video keeps playing, so you can mark clips without stopping."),
+             "The video keeps playing, so you can mark clips without stopping. Said \"clip that\" during the game, "
+             "or used a clicker? Speech... and Clicker... under the timeline flag those spots for you."),
             (self.timeline, "4. Your clips on the timeline",
              "Each clip shows up as a numbered bar. Click anywhere to jump there. "
              "Long game? Scroll the mouse wheel over the timeline to zoom in."),
@@ -714,6 +757,11 @@ class MainWindow(QMainWindow):
         self.last_deleted = None
         self._restore_position = self.project.position
         self.thumbs.set_video(path)
+        if self._listener:
+            self._listener.cancel()  # stop listening to the last video (it starts again next time it's opened)
+        self.words = speech.load_words(path)
+        if self.words is not None and not self.project.scanned.get("speech"):
+            self.apply_speech(self.words)
         self.player.setSource(QUrl.fromLocalFile(str(path)))
         self.set_speed(1)
         self.video.set_has_video(True)
@@ -748,6 +796,89 @@ class MainWindow(QMainWindow):
         self._refresh_long_summary()
         if ms > 0:
             QTimer.singleShot(0, self._auto_scan_clicks)
+            QTimer.singleShot(0, self._auto_listen)
+
+    # --- speech: captions and "clip that" ---
+    def open_speech(self):
+        dialog = SpeechDialog(self.settings, self.project is not None, self.words is not None, self)
+        dialog.listen_now.connect(self.start_listening)
+        dialog.exec()
+        self._auto_listen()
+
+    def _auto_listen(self):
+        if self.settings.auto_listen and self.words is None:
+            self.start_listening()
+
+    def _card_names(self) -> list[str]:
+        """Card names Whisper is likely to hear: cards on screen in this video, then his decks."""
+        names = []
+        if self.project:
+            names += [(o.card or {}).get("name", "") for o in self.project.overlays + self.project.long_overlays
+                      if o.kind == "card"]
+            names += [c.get("name", "") for c in (self.project.title_card or {}).get("cards", [])]
+        for deck in scryfall.load_decks():
+            names += deck["cards"]
+        return names
+
+    def start_listening(self):
+        if not self.project or self._listen_thread or not speech.model_installed(self.settings.speech_model):
+            return
+        duration = self.player.duration() / 1000
+        if duration <= 0:
+            return
+        self._listen_video = self.project.video_path
+        self._listener = speech.Transcriber(self._listen_video, duration, self.settings.speech_model,
+                                            self.settings.speech_gpu, speech.card_prompt(self._card_names()))
+        self._listen_thread = QThread(self)
+        self._listener.moveToThread(self._listen_thread)
+        self._listen_thread.started.connect(self._listener.run)
+        self._listener.progress.connect(self._on_listen_progress)
+        self._listener.finished.connect(self._on_listen_done)
+        self._listener.finished.connect(self._listen_thread.quit)
+        self._listen_thread.start()
+
+    def _on_listen_progress(self, fraction: float, text: str):
+        self.statusBar().showMessage(f"Listening for captions and \"clip that\": {int(fraction * 100)}%  ({text})")
+
+    def _on_listen_done(self, words: list, error: str):
+        self._listen_thread.wait(5000)
+        self._listen_thread, self._listener = None, None
+        same = self.project is not None and self.project.video_path == self._listen_video
+        if error:
+            self.statusBar().showMessage(error)
+        elif same and words:
+            self.words = words
+            self.apply_speech(words)
+            self._refresh_caption_box()
+        elif not same:
+            QTimer.singleShot(0, self._auto_listen)  # a different video was opened meanwhile: listen to that one
+
+    def clip_that_phrases(self) -> list[tuple[float, float]]:
+        return speech.find_clip_that(self.words or [])
+
+    def apply_speech(self, words: list):
+        """Pink flags at each "clip that", and the words themselves cut out of the long video."""
+        if not self.project:
+            return
+        phrases = speech.find_clip_that(words)
+        self.project.markers = sorted([m for m in self.project.markers if m.get("kind") != "speech"] +
+                                      [{"t": s, "kind": "speech"} for s, _ in phrases], key=lambda m: m["t"])
+        added = 0
+        for s, e in phrases:
+            a, b = max(s - 0.15, 0.0), e + 0.25
+            if not any(c.start <= a and b <= c.end for c in self.project.cuts):
+                self.project.cuts.append(Clip(round(a, 3), round(b, 3), name='"clip that"'))
+                added += 1
+        self.project.cuts.sort(key=lambda c: c.start)
+        self.project.scanned["speech"] = True
+        self._refresh_moments()
+        self._refresh_clips()
+        self._changed()
+        n = len(phrases)
+        self.statusBar().showMessage(
+            f'Listened to the whole game: {len(words)} words. ' +
+            (f'{n} "clip that"{"s" if n != 1 else ""} found (pink flags), and cut out of the long video so the '
+             f'words aren\'t heard.' if n else 'Nobody said "clip that".'))
 
     # --- clicker ---
     def open_clicker(self):
@@ -976,6 +1107,11 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Clip not saved. Your start mark is still set: press O again, or Esc to cancel.")
             return
         # The camera usually doesn't move, so the new clip gets the last crop box used.
+        trimmed = False
+        for s, _ in self.clip_that_phrases():
+            if start + MIN_CLIP_SECONDS * 4 < s < end:
+                end, trimmed = max(s - 0.1, start + MIN_CLIP_SECONDS), True  # keep "clip that" out of the Short
+                break
         clip = Clip(start, end, crop=replace(self.project.last_crop) if self.project.last_crop else None)
         index = self.project.add_clip(clip)
         self.pending_start = None
@@ -985,6 +1121,8 @@ class MainWindow(QMainWindow):
         message = f"Clip {index + 1} saved ({clip.length:.1f} seconds). Click its name in the list to rename it."
         if self.settings.nudges and clip.length > LONG_CLIP_SECONDS:
             message = f"Clip {index + 1} saved. It's {clip.length:.0f} seconds long: most strong Shorts are under 45 seconds."
+        if trimmed:
+            message = f'Clip {index + 1} saved, ending just before someone says "clip that".'
         self.statusBar().showMessage(message)
 
     def _add_cut(self, start: float, end: float):
@@ -1136,6 +1274,20 @@ class MainWindow(QMainWindow):
             placed = [overlay_mod.prepare(overlay_mod.times_in_clip(self.project.overlays, c), w, h, work)
                       for c in clips]
             freezes = [overlay_mod.freezes_in_clip(self.project.overlays, c) for c in clips]
+            if self.words is not None and self.settings.captions_on:
+                y = captions.POSITIONS[self.settings.caption_pos][1] * h
+                for i, c in enumerate(clips):
+                    if not c.captions:
+                        continue
+                    states = captions.clip_states(self.words, c, freezes[i])
+                    if not states:
+                        continue
+                    length = c.length + sum(s for _, s in freezes[i])
+                    listing = captions.write_sequence(states, length, self.settings.caption_style, w, h,
+                                                      work / f"captions{i}")
+                    band = int(h * captions.BAND) // 2 * 2
+                    placed[i].insert(0, overlay_mod.Placed(listing, 0.0, length, w / 2, y, w, band, "none", "none",
+                                                           0.0, concat=listing))
         except OSError as e:
             shutil.rmtree(work, ignore_errors=True)
             QMessageBox.warning(self, "Lethal Cuts", f"The text and cards couldn't be got ready for the export:\n{e}")
@@ -1197,6 +1349,15 @@ class MainWindow(QMainWindow):
                               title=f"Making the long video ({format_time(length, tenths=False)})...")
         dialog.exec()
         shutil.rmtree(work, ignore_errors=True)
+        if dialog.files and not dialog.error and self.words and self.settings.long_srt:
+            # The caption file for YouTube: same name as the video, .srt
+            kept = lambda t: any(a <= t < b for a, b in pieces)
+            to_out = lambda t: overlay_mod.to_output_time(t, pieces, overlaps, lead)
+            try:
+                Path(dialog.files[0]).with_suffix(".srt").write_text(captions.srt(self.words, to_out, kept),
+                                                                     encoding="utf-8")
+            except OSError as e:
+                QMessageBox.warning(self, "Lethal Cuts", f"The video was made, but its caption file couldn't be saved:\n{e}")
         if dialog.files and card and not dialog.error:
             # The next title card starts on the next episode
             self.settings.series_name = card.get("series", "")
@@ -1240,6 +1401,68 @@ class MainWindow(QMainWindow):
             return 1920, 1080
         return overlay_mod.long_frame(int(size.width()), int(size.height()), self.settings.long_size)
 
+    # --- captions ---
+    def _refresh_caption_box(self):
+        index = self.clip_list.selected_index()
+        clip = self.project.clips[index] if self.project and 0 <= index < len(self.project.clips) else None
+        heard = self.words is not None
+        self.caption_note.setVisible(not heard)
+        for w in (self.caption_check, self.fix_words_btn, self.caption_style, self.caption_pos):
+            w.setEnabled(heard and (clip is not None or w in (self.caption_style, self.caption_pos)))
+        self.caption_check.blockSignals(True)
+        self.caption_check.setChecked(bool(clip and clip.captions and self.settings.captions_on))
+        self.caption_check.blockSignals(False)
+        self.caption_style.setCurrentIndex(max(self.caption_style.findData(self.settings.caption_style), 0))
+        self.caption_pos.setCurrentIndex(max(self.caption_pos.findData(self.settings.caption_pos), 0))
+
+    def _on_caption_check(self, on: bool):
+        index = self.clip_list.selected_index()
+        if self.project and 0 <= index < len(self.project.clips):
+            self.project.clips[index].captions = on
+            if on and not self.settings.captions_on:
+                self.settings.captions_on = True  # turning one on turns captions back on in Settings
+                self._save_settings_quietly()
+            self._changed()
+            self._refresh_overlay_view()
+
+    def _on_caption_look(self):
+        self.settings.caption_style = self.caption_style.currentData()
+        self.settings.caption_pos = self.caption_pos.currentData()
+        self._save_settings_quietly()
+        self._refresh_overlay_view()
+
+    def fix_words(self):
+        index = self.clip_list.selected_index()
+        if not self.project or self.words is None or not 0 <= index < len(self.project.clips):
+            return
+        self.player.pause()
+        editor = CaptionEditor(self.words, self.project.clips[index], self)
+        if editor.exec():
+            self.words = editor.words
+            try:
+                speech.save_words(self.project.video_path, self.words, self.settings.speech_model)
+            except OSError as e:
+                self.statusBar().showMessage(f"Couldn't save the fixed words: {e}")
+            self._caption_cache = None
+            self._refresh_overlay_view()
+
+    def _caption_states(self, clip: Clip) -> list:
+        """A clip's captions in recording time, for the preview (worked out once per clip)."""
+        key = (id(clip), clip.start, clip.end, id(self.words), len(self.words or []))
+        cache = getattr(self, "_caption_cache", None)
+        if not cache or cache[0] != key:
+            self._caption_cache = (key, captions.states(captions.chunks(self.words or [], clip.start, clip.end)))
+        return self._caption_cache[1]
+
+    def _caption_now(self, t: float):
+        if self.long_mode or not self.project or self.words is None or not self.settings.captions_on or self.freeze:
+            return None
+        clip = self.preview_clip or next((c for c in self.project.clips if c.start <= t <= c.end), None)
+        if clip is None or not clip.captions:
+            return None
+        text = captions.text_at(self._caption_states(clip), t)
+        return (text, self.settings.caption_style, captions.POSITIONS[self.settings.caption_pos][1]) if text else None
+
     def _overlay_crop(self, t: float):
         """Shorts: the crop box the overlays sit in at this moment. Long videos use the whole picture."""
         if self.long_mode or not self.project:
@@ -1259,6 +1482,7 @@ class MainWindow(QMainWindow):
         if self.freeze:
             index, began, seconds = self.freeze
             freeze = (index, max(math.ceil(seconds - (time.monotonic() - began)), 1))
+        self.video.caption = self._caption_now(t)
         self.video.set_overlays(self.overlays(), t, self._overlay_crop(t), self._overlay_frame_size(),
                                 self.overlay_panel.selected_index(), not playing and not self.freeze, bounds, freeze)
 
@@ -1573,6 +1797,7 @@ class MainWindow(QMainWindow):
         self.cut_list.setVisible(long)
         self.long_note.setVisible(long)
         self.long_summary.setVisible(long)
+        self.caption_box.setVisible(not long)
         self._refresh_long_summary()
         self.nudge_box.setTitle("Fine-tune the selected cut" if long else "Fine-tune the selected clip")
         for w in (self.join_label, self.join_combo, self.join_help):
@@ -1694,6 +1919,7 @@ class MainWindow(QMainWindow):
         self.preview_btn.setEnabled(has if self.long_mode else selected)
         self._show_selected_crop()
         self.nudge_box.setEnabled(selected)
+        self._refresh_caption_box()
         if selected:
             clip = self.items()[index]
             self.start_value.setText(_precise(clip.start))
@@ -1736,6 +1962,10 @@ class MainWindow(QMainWindow):
             self._click_scan.cancel()
             self._click_thread.quit()
             self._click_thread.wait(5000)
+        if self._listener:
+            self._listener.cancel()
+            self._listen_thread.quit()
+            self._listen_thread.wait(30000)
         self.thumbs.stop()
         self.post_page.shutdown()
         super().closeEvent(event)

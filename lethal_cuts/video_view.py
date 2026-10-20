@@ -72,6 +72,7 @@ class VideoView(QGraphicsView):
         # A transition being shown in the long video preview: (kind, last picture before the cut, start, seconds)
         self._transition: tuple[str, QImage, float, float] | None = None
         self.freeze: tuple[int, int] | None = None
+        self.caption: tuple[str, str, float] | None = None  # (text, style, height 0-1) shown on the Short right now
         self._title: tuple[QImage, float, float] | None = None  # the long preview's title card: (picture, start, seconds)
 
     # --- state from the main window ---
@@ -258,9 +259,28 @@ class VideoView(QGraphicsView):
             self._draw_crop(painter)
         if self._transition:
             self._draw_transition(painter)
+        if self.caption and self.caption[0]:
+            self._draw_caption(painter)
         self._draw_overlays(painter)
         if self._title:
             self._draw_title(painter)
+
+    def _draw_caption(self, painter: QPainter):
+        from . import captions
+        text, style, y = self.caption
+        w_px, h_px = self.overlay_size
+        key = (text, style, w_px, h_px)
+        if getattr(self, "_caption_key", None) != key:
+            self._caption_key, self._caption_image = key, captions.render(style, text, w_px, h_px)
+        frame = self.overlay_frame()
+        k = frame.width() / w_px
+        band = self._caption_image
+        target = QRectF(frame.left(), frame.top() + (y * h_px - band.height() / 2) * k, frame.width(), band.height() * k)
+        painter.save()
+        painter.setClipRect(frame)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.drawImage(target, band)
+        painter.restore()
 
     def _draw_overlays(self, painter: QPainter):
         visible = self.visible_overlays()

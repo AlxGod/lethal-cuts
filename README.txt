@@ -134,6 +134,21 @@ the series name, episode number and who's playing, and add up to four
 commanders. It opens the video for a few seconds. The episode number counts up
 by itself after each export.
 
+CAPTIONS AND "CLIP THAT"
+Lethal Cuts can listen to a game (on this PC, nothing is uploaded) and write
+down every word. Click "Speech..." under the timeline and download the speech
+model once (480 MB). After that every video you open is listened to in the
+background (about half an hour for a 3-hour game; faster with the optional
+graphics card pack in the same window).
+- Say "clip that" during a game: each one becomes a pink flag. A Short you mark
+  that runs into it ends just before the words, and in the long video the words
+  are cut out by themselves.
+- Shorts get captions, a few words at a time with the spoken word lit up. In the
+  Clips tab under Captions: turn them off for a clip, pick the look and height,
+  or "Fix words..." (fix a card name everywhere at once).
+- Long videos get a caption file (.srt) next to them: upload it in YouTube
+  Studio > Subtitles > Add > Upload file.
+
 Placing and timing:
 - Drag it on the video to move it. Drag its gold corner, use the Size slider or
   scroll the mouse wheel over it to resize it.

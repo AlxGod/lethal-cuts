@@ -162,6 +162,7 @@ class Placed:
     slide_off: float
     typed: int = 0        # typewriter: how many pictures (one more letter each), named <image stem>_0001.png...
     type_rate: float = 0  # typewriter: letters a second
+    concat: Path | None = None  # captions: FFmpeg's list of pictures and how long each shows
 
 
 def freezes_in_clip(overlays: list[Overlay], clip: Clip) -> list[tuple[float, int]]:
@@ -256,7 +257,9 @@ def image_inputs(placed: list[Placed], fps: int) -> list[str]:
     holds one copy of it in memory, not a queue of copies waiting for their turn."""
     args = []
     for p in placed:
-        if p.typed:
+        if p.concat:
+            args += ["-f", "concat", "-safe", "0", "-i", str(p.concat)]
+        elif p.typed:
             # Typewriter: one picture per letter, played as a short video at the typing speed
             pattern = p.image.with_name(f"{p.image.stem}_%04d.png")
             args += ["-framerate", f"{p.type_rate:.4f}", "-start_number", "1", "-i", str(pattern)]
@@ -276,6 +279,13 @@ def filter_graph(pre: str, post: str, placed: list[Placed], first_input: int, fp
         a = anim_seconds(e - s)
         k_in, k_out = f"clip((t-{s:.4f})/{a:.4f},0,1)", f"clip(({e:.4f}-t)/{a:.4f},0,1)"
         frames = max(int(round((e - s) * fps)) + 1, 1)
+        if p.concat:
+            # Captions: already timed from the start of the video, one picture per moment
+            parts.append(f"[{first_input + i}:v]format=rgba,fps={fps}[o{i}]")
+            parts.append(f"[{last}][o{i}]overlay=x='(main_w-overlay_w)/2':y='{p.cy:.2f}-overlay_h/2':"
+                         f"eof_action=pass[b{i + 1}]")
+            last = f"b{i + 1}"
+            continue
         if p.typed:
             # The letters arrive at the typing speed; the last picture then holds until it goes away
             hold = max(e - s - p.typed / p.type_rate, 0) + 0.2

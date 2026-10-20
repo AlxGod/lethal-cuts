@@ -45,6 +45,14 @@ HELP = {
             "Default uses the choice in Settings > Export, so you can change every cut at once. A transition "
             "overlaps the two parts slightly, so the video gets that much shorter. Press P to see it in the "
             "preview.",
+    "captions": "Words said in the game, burned into the Short a few at a time, with the word being said lit up. "
+                "They come from Lethal Cuts listening to the game (Speech... under the timeline), which happens by "
+                "itself once the speech model is downloaded.\n\n"
+                "On this clip: turn captions on or off for the picked clip. Fix words...: correct anything it heard "
+                "wrong, in this clip or all through the game (handy for card names). The two menus set the look "
+                "and the height of the captions for every Short. \"Clip that\" never shows in captions.\n\n"
+                "Long videos get a caption file (.srt) saved next to them instead: upload it in YouTube Studio > "
+                "Subtitles so viewers can turn captions on.",
     "moments": "Moments you marked while recording, by pressing the moment key (F8 unless you changed it) when "
                "something great happened. Each one is a gold flag on the timeline, with the few minutes before it "
                "shaded gold. Moment > (key N) jumps to the start of the next one, so you can watch the lead-up and "

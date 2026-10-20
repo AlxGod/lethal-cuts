@@ -129,6 +129,22 @@ class SettingsPage(QScrollArea):
         form.addRow("Long video cuts join with:", self.long_transition)
         layout.addWidget(exp)
 
+        # Captions
+        caps = QGroupBox("Captions")
+        caps_layout = QVBoxLayout(caps)
+        self.captions_on = QCheckBox("Put captions on Shorts (each clip can still turn them off)")
+        self.captions_on.setChecked(s.captions_on)
+        self.long_srt = QCheckBox("Save a caption file (.srt) next to each long video, to upload to YouTube")
+        self.long_srt.setChecked(s.long_srt)
+        caps_note = QLabel("Captions come from Lethal Cuts listening to the game: see Speech... under the Editor's "
+                           "timeline. Their look and height are set in the Editor's Clips tab.")
+        caps_note.setObjectName("dimLabel")
+        caps_note.setWordWrap(True)
+        caps_layout.addWidget(self.captions_on)
+        caps_layout.addWidget(self.long_srt)
+        caps_layout.addWidget(caps_note)
+        layout.addWidget(caps)
+
         # Tips
         tips = QGroupBox("Tips")
         tips_layout = QVBoxLayout(tips)
@@ -178,6 +194,8 @@ class SettingsPage(QScrollArea):
         self.long_size.currentIndexChanged.connect(lambda _: self._apply())
         self.long_transition.currentIndexChanged.connect(lambda _: self._apply())
         self.nudges.toggled.connect(lambda _: self._apply())
+        self.captions_on.toggled.connect(lambda _: self._apply())
+        self.long_srt.toggled.connect(lambda _: self._apply())
         self.moment_key.currentIndexChanged.connect(lambda _: self._apply())
         self.moment_minutes.currentIndexChanged.connect(lambda _: self._apply())
         self.verified.toggled.connect(lambda _: self._apply())
@@ -255,7 +273,9 @@ class SettingsPage(QScrollArea):
         walkthrough = self.s.walkthrough_done
         # Never moves their videos, and keeps what Lethal Cuts has learned or been told about their accounts
         fresh = Settings(walkthrough_done=walkthrough, save_folder=self.s.save_folder, obs_exe=self.s.obs_exe,
-                         record_gb_per_hour=self.s.record_gb_per_hour, youtube_verified=self.s.youtube_verified)
+                         record_gb_per_hour=self.s.record_gb_per_hour, youtube_verified=self.s.youtube_verified,
+                         series_name=self.s.series_name, next_episode=self.s.next_episode,
+                         speech_model=self.s.speech_model)
         self.s.__dict__.update(fresh.__dict__)
         self.pad_before.setValue(fresh.pad_before)
         self.pad_after.setValue(fresh.pad_after)
@@ -264,6 +284,8 @@ class SettingsPage(QScrollArea):
         self.long_size.setCurrentIndex(list(LONG_SIZES).index(fresh.long_size))
         self.long_transition.setCurrentIndex(max(self.long_transition.findData(fresh.long_transition), 0))
         self.nudges.setChecked(True)
+        self.captions_on.setChecked(True)
+        self.long_srt.setChecked(True)
         self.moment_key.setCurrentText(fresh.moment_key)
         self.moment_minutes.setCurrentIndex(MOMENT_MINUTES.index(int(fresh.moment_minutes)))
         for action, edit in self.key_edits.items():
@@ -279,6 +301,8 @@ class SettingsPage(QScrollArea):
         self.s.long_size = self.long_size.currentData()
         self.s.long_transition = self.long_transition.currentData()
         self.s.nudges = self.nudges.isChecked()
+        self.s.captions_on = self.captions_on.isChecked()
+        self.s.long_srt = self.long_srt.isChecked()
         self.s.moment_key = self.moment_key.currentText()
         self.s.moment_minutes = self.moment_minutes.currentData()
         self.s.youtube_verified = self.verified.isChecked()

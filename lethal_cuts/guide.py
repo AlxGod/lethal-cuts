@@ -44,6 +44,8 @@ the crop box carries over from clip to clip because the camera usually stays put
 <li><b>Mark great moments with a clicker.</b> Keep a dog-training clicker (a few dollars at a pet store) by the table and
 click it when something great happens. Each click becomes a cyan flag on the timeline, and <i>Moment &gt;</i> jumps to the
 minutes before it, just like F8.</li>
+<li><b>Or just say "clip that".</b> Once Lethal Cuts has listened to the game (see Captions below), every "clip that"
+becomes a pink flag, and the words are kept out of the videos.</li>
 </ul>
 <p><b>Teaching Lethal Cuts your clicker (once).</b> Open a recording with a click in it, play it at 1x and stop with the
 playhead right on a click. Click <i>Clicker...</i> (under the timeline), then <i>Learn the click</i>, then <i>Find clicks in
@@ -156,6 +158,35 @@ covers that moment. In a long video, one that runs into a cut just ends where th
 internet but a card you've used before works offline.</p>
 """
 
+SPEECH = """
+<a name="speech"></a><h2>Captions and "clip that"</h2>
+<p>Lethal Cuts can listen to a game and write down every word with its time, right on this PC (nothing is uploaded). That
+gives your Shorts captions, and finds every time someone said "clip that".</p>
+<ol>
+<li><b>Download the speech model once.</b> Click <i>Speech...</i> under the Editor's timeline, then <i>Download</i>. The
+recommended <i>Small</i> model is 480 MB.</li>
+<li><b>That's it.</b> From then on, each video you open is listened to in the background (the progress shows at the bottom
+of the window). Keep editing meanwhile. On the processor a 3-hour game takes about half an hour.</li>
+<li><b>Faster on an NVIDIA graphics card (optional).</b> In <i>Speech...</i>, <i>Download the graphics card pack</i> (about
+1.3 GB, NVIDIA's own libraries). If the card can't run it, listening just uses the processor.</li>
+</ol>
+<p><b>"Clip that".</b> Say "clip that" (or "clip it") during the game when something great happens. Each one becomes a pink
+flag on the timeline, and <i>Moment &gt;</i> jumps to the minutes before it. So the words don't break the fourth wall:</p>
+<ul>
+<li>In a Short, a clip you mark that runs into "clip that" ends just before the words.</li>
+<li>In the long video, the two words are cut out by themselves (a tiny cut in the list, which you can delete).</li>
+<li>They never show in captions.</li>
+</ul>
+<p><b>Captions on Shorts.</b> Once a game's been listened to, every Short gets captions: a few words at a time, with the
+word being said lit up. In the Clips tab under <i>Captions</i>: <i>On this clip</i> turns them on or off for the picked clip,
+the two menus pick the look and the height, and <i>Fix words...</i> corrects anything it heard wrong. Card names it keeps
+getting wrong? Fix them everywhere at once there ("Soul Ring" &rarr; "Sol Ring"). Cards you've put on screen and cards in
+<i>My decks</i> are given to it as hints, which helps a lot. Press <span class="key">{preview}</span> to see them.</p>
+<p><b>Long videos</b> get a caption file instead: <i>game name.srt</i>, saved next to the video. On YouTube, open the video in
+YouTube Studio &gt; <i>Subtitles</i> &gt; <i>Add</i> &gt; <i>Upload file</i>, and viewers can turn captions on or off.
+(Settings &gt; Captions turns either kind off.)</p>
+"""
+
 SHORTS = """
 <a name="shorts"></a><h2>Shorts tips</h2>
 <ul>
@@ -206,8 +237,8 @@ class GuidePage(QWidget):
         hotkeys = f'<a name="hotkeys"></a><h2>Hotkey cheat sheet</h2><p>Change any of these in Settings.</p><table>{rows}</table>'
         contents = ('<p><a href="#recording">Recording tips</a> &nbsp;|&nbsp; <a href="#steps">Step by step</a>'
                     ' &nbsp;|&nbsp; <a href="#long">Long videos</a> &nbsp;|&nbsp; <a href="#onscreen">Cards and text</a>'
-                    ' &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a>'
+                    ' &nbsp;|&nbsp; <a href="#speech">Captions</a> &nbsp;|&nbsp; <a href="#hotkeys">Hotkeys</a>'
                     ' &nbsp;|&nbsp; <a href="#shorts">Shorts tips</a></p>')
         html = (f"<h1>How to use Lethal Cuts</h1>{contents}{RECORDING}"
-                f"{STEPS.format(**keys)}{LONG.format(**keys)}{ON_SCREEN.format(**keys)}{hotkeys}{SHORTS}")
+                f"{STEPS.format(**keys)}{LONG.format(**keys)}{ON_SCREEN.format(**keys)}{SPEECH.format(**keys)}{hotkeys}{SHORTS}")
         self.browser.setHtml(html)

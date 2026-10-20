@@ -65,6 +65,13 @@ class Settings:
     long_transition: str = "cut"  # long videos: how cuts join up unless a cut picks its own (long_export.TRANSITIONS)
     series_name: str = ""     # the title card's series name, as last used
     next_episode: int = 1     # the title card's next episode number (counts up after each export with one)
+    speech_model: str = "small.en"  # the Whisper model for captions and "clip that" (speech.MODELS)
+    auto_listen: bool = True  # listen to each newly opened video in the background, once the model is downloaded
+    speech_gpu: bool = True   # use the graphics card for listening when the graphics card pack is downloaded
+    captions_on: bool = True  # burn captions into Shorts (each clip can turn them off)
+    caption_style: str = "caption"  # captions.STYLES
+    caption_pos: str = "low"  # captions.POSITIONS
+    long_srt: bool = True     # save a caption file (.srt) next to each long video
     nudges: bool = True       # friendly tips while working
     clip_color_a: str = "#b0304a"
     clip_color_b: str = "#7b4fc9"
@@ -126,6 +133,8 @@ def load() -> Settings:
         s.quality = "high"
     if s.long_size not in LONG_SIZES:
         s.long_size = "1080"
+    if s.speech_model not in ("base.en", "small.en", "medium.en"):
+        s.speech_model = "small.en"
     if s.long_transition not in ("cut", "fade", "dip", "whip"):
         s.long_transition = "cut"
     if s.moment_key not in MOMENT_KEYS:

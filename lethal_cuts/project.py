@@ -34,6 +34,7 @@ class Clip:
     name: str = ""
     crop: Crop | None = None  # None = not set yet (exports centered)
     transition: str = ""      # long video cuts: how the video joins up here ("" = the default in Settings)
+    captions: bool = True     # Shorts: burn captions in (when the video has been listened to)
 
     @property
     def length(self) -> float:
@@ -157,7 +158,8 @@ def open_project(video_path: Path) -> Project:
         return Project(video_path)
     data = json.loads(path.read_text(encoding="utf-8"))
     clips = [
-        Clip(float(c["start"]), float(c["end"]), c.get("name", ""), Crop.from_dict(c.get("crop")))
+        Clip(float(c["start"]), float(c["end"]), c.get("name", ""), Crop.from_dict(c.get("crop")),
+             captions=bool(c.get("captions", True)))
         for c in data.get("clips", [])
     ]
     clips.sort(key=lambda c: c.start)
