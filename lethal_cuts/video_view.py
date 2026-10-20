@@ -43,6 +43,10 @@ class VideoView(QGraphicsView):
         self.setRenderHint(QPainter.SmoothPixmapTransform)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setMouseTracking(True)
+        # A QGraphicsView takes dragged files and its scene then refuses them, so a video dropped
+        # on the picture went nowhere. Turned off, the drop goes up to the main window.
+        self.setAcceptDrops(False)
+        self.viewport().setAcceptDrops(False)
 
         self.video_item = QGraphicsVideoItem()
         self.video_item.setAspectRatioMode(Qt.KeepAspectRatio)
