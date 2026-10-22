@@ -847,9 +847,12 @@ class MainWindow(QMainWindow):
         same = self.project is not None and self.project.video_path == self._listen_video
         if error:
             self.statusBar().showMessage(error)
-        elif same and words:
-            self.words = words
-            self.apply_speech(words)
+        elif same:
+            self.words = words  # even none heard: it's been listened to, so don't start again
+            if words:
+                self.apply_speech(words)
+            else:
+                self.statusBar().showMessage("Lethal Cuts didn't hear any talking in this video.")
             self._refresh_caption_box()
         elif not same:
             QTimer.singleShot(0, self._auto_listen)  # a different video was opened meanwhile: listen to that one
