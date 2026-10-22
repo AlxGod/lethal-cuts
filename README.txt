@@ -119,7 +119,10 @@ Adding text: move the playhead there, click "+ Text" and type the words.
 - Put *stars* around a word to show it in the highlight color ("That's *LETHAL*").
 - Style picks a ready-made look, and moves it to where that style usually goes:
   Hook (big headline at the top), Callout (words in a gold box), Name tag
-  (small tag in the bottom corner), Plain (white with a black outline).
+  (small tag low on one side), Plain (white with a black outline).
+- On a phone, YouTube and TikTok cover the edges of a Short with their top bar,
+  buttons and title. Cards and text stay inside the dashed line that shows while
+  one is picked, so nothing ends up hidden under them.
 - "Edit look" changes the font, colors, outline, box and shadow, or turns on CAPS.
 - "Comes in: Typewriter" types the words out letter by letter.
 - The next text you add starts in the style you used last.

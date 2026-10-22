@@ -308,6 +308,15 @@ class VideoView(QGraphicsView):
             painter.drawImage(rect, ov.render(self.overlays[i], w_px, h_px, letters))
         painter.setOpacity(1.0)
         if self.editing and self.selected_overlay in visible:
+            if h_px > w_px and self.overlays[self.selected_overlay].kind != "pause":
+                # On a Short: the line cards and text stay inside, clear of the phone app's buttons
+                safe = ov.safe_area(w_px, h_px)
+                frame = self.overlay_frame()
+                k = frame.width() / w_px
+                painter.setPen(QPen(QColor(255, 255, 255, 110), 1 / max(self.transform().m11(), 0.01), Qt.DashLine))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(QRectF(frame.left() + safe.left() * k, frame.top() + safe.top() * k,
+                                        safe.width() * k, safe.height() * k))
             rect, _ = self.overlay_rect(self.selected_overlay, animated=False)
             pen = QPen(BOX_COLOR, 2 / max(self.transform().m11(), 0.01), Qt.DashLine)
             painter.setPen(pen)

@@ -126,7 +126,7 @@ It shows for 4 seconds. Put <b>*stars*</b> around a word to make it stand out in
 <ul>
 <li><b>Hook</b>: a big headline in capitals at the top, for the first seconds of a Short ("HE HAD THE ANSWER").</li>
 <li><b>Callout</b>: dark words in a gold box, to point something out ("Turn 4 combo").</li>
-<li><b>Name tag</b>: a small dark tag in the bottom corner with a gold edge, for who's who ("Alex, Atraxa").</li>
+<li><b>Name tag</b>: a small dark tag with a gold edge, low on one side, for who's who ("Alex, Atraxa").</li>
 <li><b>Plain</b>: white words with a black outline.</li>
 </ul>
 <p>Click <i>Edit look</i> to change the font, the text and highlight colors, the outline, the box (its color can be see-through)
@@ -145,7 +145,8 @@ number counts up by itself after each long video you export with a title card.</
 <p><b>Placing and timing them</b></p>
 <ul>
 <li><b>Where:</b> drag it on the video. Drag its gold corner, use the <i>Size</i> slider, or scroll the mouse wheel over it to resize.
-On Shorts it sits inside the tall crop box, so you see exactly where it lands on the phone video.</li>
+On Shorts it sits inside the tall crop box, so you see exactly where it lands on the phone video.
+On a phone, YouTube and TikTok draw their top bar, like/share buttons and title over the edges of a Short, so cards and text stay inside the <b>dashed line</b> that shows while one is picked. Drag it toward an edge and it stops there.</li>
 <li><b>When:</b> each one has a bar in the strip under the timeline. Drag the bar to move it; drag either end to make it show
 longer or shorter. <i>Shows for</i> sets the length in seconds.</li>
 <li><b>How it moves:</b> <i>Comes in</i> and <i>Goes away</i> pick Pop, Fade, Slide or None (text can also use Typewriter).</li>

@@ -25,7 +25,7 @@ HELP = {
                 "(Hook, Callout, Name tag, Plain) and Edit look changes the font, colors, outline, box and shadow. "
                 "Put *stars* around words to highlight them. + Pause (Shorts) freezes the clip with a \"What's your "
                 "play?\" countdown; + Title card (long videos) opens the video with the series name and episode. "
-                "Drag it on the video to place it; drag its corner, use the Size slider or scroll the mouse wheel "
+                "Drag it on the video to place it (on a Short it stays inside the dashed line, clear of the phone app's buttons); drag its corner, use the Size slider or scroll the mouse wheel "
                 "over it to resize it. Its bar in the strip under the timeline sets when it shows: drag the bar to "
                 "move it, or drag either end to make it show longer or shorter.\n\n"
                 "What you see is what gets exported. Shorts and the long video each have their own: text added while "

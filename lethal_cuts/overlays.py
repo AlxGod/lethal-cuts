@@ -29,6 +29,11 @@ MIN_SECONDS = 0.5
 MIN_SIZE, MAX_SIZE = 0.1, 1.0
 TEXT_FONT = "Segoe UI"
 CARD_CORNER = 0.045    # Magic cards' rounded corners, as a fraction of their width
+# On a phone, YouTube Shorts and TikTok draw their buttons, title and top bar over the edges of a
+# Short (left, top, right, bottom, as fractions of the frame). Measured on a YouTube Short on an
+# iPhone: the top bar reaches 18% down, the like/share column 17% in from the right, the title 20%
+# up from the bottom, and tall phones trim about 5% off each side. Cards and text stay inside.
+PHONE_COVERED = (0.05, 0.17, 0.16, 0.22)
 
 
 def long_frame(src_w: int, src_h: int, size: str) -> tuple[int, int]:
@@ -113,11 +118,25 @@ def _render_card(o: Overlay, frame_w: int) -> QImage:
 
 
 # --- where it sits and how it moves (shared by the Editor and the export) ---
+def safe_area(frame_w: int, frame_h: int) -> QRectF:
+    """The part of the frame people really see: on a Short, clear of the phone app's buttons."""
+    if frame_h <= frame_w:
+        return QRectF(0, 0, frame_w, frame_h)
+    left, top, right, bottom = PHONE_COVERED
+    return QRectF(left * frame_w, top * frame_h, (1 - left - right) * frame_w, (1 - top - bottom) * frame_h)
+
+
 def resting_center(o: Overlay, img_w: float, img_h: float, frame_w: int, frame_h: int) -> tuple[float, float]:
-    """The middle of the overlay in pixels, kept far enough in that the whole thing stays on screen."""
-    def fit(value, half, full):
-        return full / 2 if half * 2 >= full else min(max(value, half), full - half)
-    return fit(o.x * frame_w, img_w / 2, frame_w), fit(o.y * frame_h, img_h / 2, frame_h)
+    """The middle of the overlay in pixels, kept far enough in that the whole thing shows: inside
+    the frame, and on a Short clear of the phone's buttons (pause cards fill the frame instead)."""
+    area = QRectF(0, 0, frame_w, frame_h) if o.kind == "pause" else safe_area(frame_w, frame_h)
+
+    def fit(value, half, lo, size):
+        if half * 2 >= size:
+            return lo + size / 2
+        return min(max(value, lo + half), lo + size - half)
+    return (fit(o.x * frame_w, img_w / 2, area.left(), area.width()),
+            fit(o.y * frame_h, img_h / 2, area.top(), area.height()))
 
 
 def anim_seconds(length: float) -> float:

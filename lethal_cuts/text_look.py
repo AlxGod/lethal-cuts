@@ -31,7 +31,7 @@ STYLES = {
         "name": "Hook", "tip": "A big headline in capitals at the top",
         "look": dict(font="Segoe UI", weight=900, color="#ffffff", accent="#ffd400", outline=0.16,
                      outline_color="#000000", shadow=True, box="", stripe=False, caps=True, align="center"),
-        "short": (0.5, 0.17, 0.72), "long": (0.5, 0.13, 0.5), "in": "pop", "out": "fade",
+        "short": (0.5, 0.27, 0.72), "long": (0.5, 0.13, 0.5), "in": "pop", "out": "fade",
     },
     "callout": {
         "name": "Callout", "tip": "Dark words in a gold box",
@@ -40,10 +40,10 @@ STYLES = {
         "short": (0.5, 0.64, 0.46), "long": (0.5, 0.78, 0.3), "in": "pop", "out": "pop",
     },
     "nametag": {
-        "name": "Name tag", "tip": "A small tag in the bottom corner, for who's who",
+        "name": "Name tag", "tip": "A small tag low on one side, for who's who",
         "look": dict(font="Segoe UI", weight=700, color="#ffffff", accent="#f0b840", outline=0.0,
                      outline_color="#000000", shadow=False, box="#e616121e", stripe=True, caps=False, align="left"),
-        "short": (0.3, 0.86, 0.34), "long": (0.16, 0.88, 0.2), "in": "slide", "out": "slide",
+        "short": (0.3, 0.62, 0.34), "long": (0.16, 0.88, 0.2), "in": "slide", "out": "slide",
     },
     "plain": {
         "name": "Plain", "tip": "White words with a black outline",
