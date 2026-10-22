@@ -59,6 +59,8 @@ Test offline with a small generated clip in a temp folder, never in this folder.
 - Fake anything that would leave the test: QDesktopServices.openUrl, post_page.show_in_folder, post_page.QFile for the Recycle Bin, QMessageBox.question, `updater._get` for GitHub, and the `obs` functions.
 - Turn tips off in the test settings (`"nudges": false`), or the "Before you export" box waits forever for a click.
 - Run tests with a time limit (`timeout 300 python -u test.py > out.txt`).
+- Before deleting a test data folder, remove its speech-model junction with `cmd /c rmdir <junction>` (no /s): a recursive delete can follow it and wipe the one downloaded model.
+- The built program (`%TEMP%\pyi-build\LethalCuts\dist\Lethal Cuts\Lethal Cuts.exe`) can be run on a test video with `LETHALCUTS_DATA` set; set `HTTPS_PROXY=http://127.0.0.1:9` so its update check can't reach GitHub.
 - When patching files with a script from the Bash tool, write the script to a file first. Inline heredocs turned `\n` in Python strings into real line breaks.
 
 ## Building and releasing
