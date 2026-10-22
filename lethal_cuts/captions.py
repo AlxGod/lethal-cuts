@@ -19,6 +19,7 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QImage, QPainter
 
 from . import text_look
+from .overlays import PHONE_COVERED
 from .project import Clip, Overlay
 from .speech import CLIP_WORDS, _plain
 
@@ -106,7 +107,13 @@ def render(style: str, text: str, frame_w: int, frame_h: int) -> QImage:
     if text:
         o = look(style, frame_w)
         o.text = text
-        image = text_look.render_text(o, frame_w)
+        # Centered, so on a Short it stays narrow enough to clear the like/share buttons on the right
+        wrap = text_look.TEXT_WRAP if frame_h <= frame_w else 1 - 2 * PHONE_COVERED[2] - 0.02
+        for _ in range(4):  # a long word or two: a bit smaller rather than a third line
+            if len(text_look._layout(o, frame_w, wrap)[3]) <= 2:
+                break
+            o.size *= 0.88
+        image = text_look.render_text(o, frame_w, wrap=wrap)
         p = QPainter(band)
         p.drawImage(QPointF((frame_w - image.width()) / 2, (band.height() - image.height()) / 2), image)
         p.end()

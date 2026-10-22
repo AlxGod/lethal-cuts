@@ -83,7 +83,7 @@ def render(o: Overlay, frame_w: int, frame_h: int, letters: int | None = None) -
         elif o.kind == "pause":
             image = pause_title.render_pause(o, frame_w, frame_h, letters)  # letters = the countdown number
         else:
-            image = text_look.render_text(o, frame_w, letters)
+            image = text_look.render_text(o, frame_w, letters, text_wrap(frame_w, frame_h))
         if len(_cache) > 200:
             _cache.clear()
         _cache[key] = image
@@ -124,6 +124,13 @@ def safe_area(frame_w: int, frame_h: int) -> QRectF:
         return QRectF(0, 0, frame_w, frame_h)
     left, top, right, bottom = PHONE_COVERED
     return QRectF(left * frame_w, top * frame_h, (1 - left - right) * frame_w, (1 - top - bottom) * frame_h)
+
+
+def text_wrap(frame_w: int, frame_h: int) -> float:
+    """How wide a line of text may get: on a Short, no wider than the part clear of the phone's buttons."""
+    if frame_h <= frame_w:
+        return text_look.TEXT_WRAP
+    return min(text_look.TEXT_WRAP, 1 - PHONE_COVERED[0] - PHONE_COVERED[2] - 0.03)
 
 
 def resting_center(o: Overlay, img_w: float, img_h: float, frame_w: int, frame_h: int) -> tuple[float, float]:

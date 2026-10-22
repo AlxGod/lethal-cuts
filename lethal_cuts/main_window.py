@@ -747,6 +747,7 @@ class MainWindow(QMainWindow):
 
     def open_video(self, path: Path):
         self.save_now()
+        self.tabs.setCurrentWidget(self.editor_page)  # dropped on another tab, or opened from the File menu there
         try:
             self.project = open_project(path)
         except (OSError, ValueError, KeyError) as e:
@@ -1533,7 +1534,7 @@ class MainWindow(QMainWindow):
         if self.long_mode:
             o = Overlay("card", round(start, 3), round(end, 3), x=0.86, y=0.5, size=0.22, card=picker.card)
         else:
-            o = Overlay("card", round(start, 3), round(end, 3), x=0.5, y=0.45, size=0.55, card=picker.card)
+            o = Overlay("card", round(start, 3), round(end, 3), x=0.5, y=0.43, size=0.55, card=picker.card)
         overlays = self.overlays()
         overlays.append(o)
         overlays.sort(key=lambda x: x.start)

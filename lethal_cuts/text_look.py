@@ -99,12 +99,12 @@ def _words(text: str, caps: bool) -> list[list[list[tuple[str, bool]]]]:
     return paragraphs
 
 
-def _layout(o: Overlay, frame_w: int):
+def _layout(o: Overlay, frame_w: int, wrap: float = TEXT_WRAP):
     font = font_for(o, frame_w)
     m = QFontMetricsF(font)
     space = m.horizontalAdvance(" ")
     width_of = lambda word: sum(m.horizontalAdvance(t) for t, _ in word)
-    limit = frame_w * TEXT_WRAP
+    limit = frame_w * wrap
     lines = []
     for words in _words(o.text.strip() or "Your text", o.caps):
         line, w = [], 0.0
@@ -137,8 +137,9 @@ def typed_letters(o: Overlay, start: float, end: float, t: float) -> int | None:
     return min(total, max(int((t - start) * type_rate(o, end - start)) + 1, 1))
 
 
-def render_text(o: Overlay, frame_w: int, letters: int | None = None) -> QImage:
-    font, m, space, lines = _layout(o, frame_w)
+def render_text(o: Overlay, frame_w: int, letters: int | None = None, wrap: float = TEXT_WRAP) -> QImage:
+    """wrap: the widest a line may get, as a fraction of the video's width."""
+    font, m, space, lines = _layout(o, frame_w, wrap)
     px = font.pixelSize()
     line_h = m.height()
     text_w = max((w for _, w in lines), default=0.0)
